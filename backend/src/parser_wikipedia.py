@@ -19,6 +19,8 @@ async def main():
 
         
 
+
+
         # result.success        → True se il crawl è andato a buon fine
         # result.error_message  → messaggio d'errore in caso di fallimento
         # result.markdown       → testo in Markdown, pronto per LLM e RAG
