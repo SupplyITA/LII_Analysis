@@ -24,7 +24,7 @@ def clean_wikipedia_content(html: str) -> str:
         if not content: return ""
 
     #rimuoviamo tutto quello che non ci interessa
-    for element in content.select('table, .infobox, .reflist, .navbox, .mw-editsection, .ambox, .mw-jump-link, .metadata, sup.reference'):
+    for element in content.select('.infobox, .reflist, .navbox, .mw-editsection, .ambox, .mw-jump-link, .metadata, sup.reference'):
         element.decompose()
 
     parts = []
