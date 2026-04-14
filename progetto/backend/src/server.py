@@ -1,10 +1,13 @@
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException
+<<<<<<< HEAD
 from typing import List, Dict
 
 # qui: importare le future funzioni per la logica del parser
 
 app = FastAPI()
+=======
+>>>>>>> origin/pippo
 
 # formato delle informazioni estratte dal parser
 class ParseResponse(BaseModel):
@@ -13,6 +16,7 @@ class ParseResponse(BaseModel):
     title: str
     html_text: str
     parsed_text: str
+<<<<<<< HEAD
 
 # formato dati quantitativi
 class TokenLevelEval(BaseModel):
@@ -68,3 +72,6 @@ def full_gs_eval(domain: str):
 
 
 
+=======
+    
+>>>>>>> origin/pippo
