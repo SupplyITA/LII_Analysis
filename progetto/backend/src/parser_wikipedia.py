@@ -29,7 +29,7 @@ def clean_wikipedia_content(html: str) -> str:
     for a in content.find_all('a', href=True):
         link_text = a.get_text(strip=True)
         href = a['href']
-        # Se il link è relativo (es. /wiki/Horse), lo rendiamo assoluto
+        # se il link è relativo (es. /wiki/Horse), lo rendiamo assoluto
         if href.startswith('/wiki/'):
             href = f"https://en.wikipedia.org{href}"
         if link_text:
@@ -39,14 +39,11 @@ def clean_wikipedia_content(html: str) -> str:
     #cerchiamo i tag rilevanti includendo 'table' per le wiki-table
     for tag in content.find_all(['h2', 'h3', 'p', 'table']):
         if tag.name == 'table':
-            # Estraiamo il testo della tabella. In questa fase non serve 
-            # un formato perfetto, l'importante è preservare i dati.
             table_text = tag.get_text(" | ", strip=True)
             if table_text:
                 parts.append(f"\n| {table_text} |\n")
         elif tag.name in ['h2', 'h3']:
             title_text = tag.get_text().strip()
-            # Pulizia residua per titoli che contengono link
             clean_title = title_text.split('[')[0].strip()
             level = "##" if tag.name == 'h2' else "###"
             parts.append(f"{level} {clean_title}")
@@ -74,7 +71,6 @@ async def parse_wikipedia(url: str) -> dict:
         title_tag = soup.find("h1", {"id": "firstHeading"}) or soup.find("h1")
         title = title_tag.get_text().strip() if title_tag else "No Title Found"
 
-        # Estrae il testo pulito passando l'html completo alla tua funzione
         parsed_text = clean_wikipedia_content(html_grezzo)
 
         return {
@@ -93,7 +89,7 @@ async def parse_wikipedia(url: str) -> dict:
 
 # test
 if __name__ == "__main__":
-    # Test con Minerva (come suggerito dalle slide 20)
+
     test_url = "https://en.wikipedia.org/wiki/Horse"
     try:
         res = asyncio.run(parse_wikipedia(test_url))

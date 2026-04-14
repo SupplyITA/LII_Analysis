@@ -7,7 +7,6 @@ def clean_reddit_content(html_text: str) -> str:
     soup = BeautifulSoup(html_text, "html.parser")
     parts = []
     
-    # 1. Estrazione del Post Originale (OP)
     post = soup.find("shreddit-post")
     if post:
         parts.append("## Original Post")
@@ -20,24 +19,21 @@ def clean_reddit_content(html_text: str) -> str:
                     a.replace_with(f"[{link_text}]({a['href']})")
             parts.append(content_div.get_text("\n", strip=True))
 
-    # 2. Estrazione dei Commenti
-    # Reddit usa il tag <shreddit-comment> per i singoli commenti
+    #estrazione dei commenti
+
     comments = soup.find_all("shreddit-comment")
     if comments:
         parts.append("\n---\n## Top Comments")
         
         for i, comment in enumerate(comments):
-            # Limitiamo a un numero ragionevole di commenti (es. i primi 10) 
-            # per evitare di avere un documento troppo lungo e dispersivo
+            #limitiamo il numero dei commenti a 10 per evitare di sovraccaricare l'output
             if i >= 10: break 
             
-            # Il testo del commento è solitamente dentro un div con slot="comment"
             comment_body = comment.find("div", {"slot": "comment"})
             if comment_body:
-                # Puliamo il testo del commento
                 text = comment_body.get_text(" ", strip=True)
-                # Rimuoviamo eventuali testi "Reply", "Give Award" ecc. se presenti
-                if text and len(text) > 5: # Ignoriamo commenti troppo brevi o vuoti
+                
+                if text and len(text) > 5:
                     parts.append(f"- {text}")
 
     return "\n\n".join(parts)

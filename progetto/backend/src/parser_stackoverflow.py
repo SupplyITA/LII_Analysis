@@ -11,18 +11,17 @@ def clean_post_body(post_body_div):
     """Trasforma un div di SO in Markdown pulito con blocchi di codice e link."""
     if not post_body_div: return ""
 
-    # 1. Rimuoviamo i pulsanti "Copy" che sporcano il testo
+
     for btn in post_body_div.select('.js-code-copy-container, .d-none'):
         btn.decompose()
 
-    # 2. Trasformiamo i blocchi di codice <pre><code> in Markdown ```
     for pre in post_body_div.find_all('pre'):
         code = pre.find('code')
         if code:
             code_text = code.get_text()
-            pre.replace_with(f"\n```cpp\n{code_text}\n```\n") # Usiamo cpp come default visto il tuo test
+            pre.replace_with(f"\n```cpp\n{code_text}\n```\n") 
 
-    # 3. Trasformiamo i link in Markdown [testo](url)
+    #link in Markdown [testo](url)
     for a in post_body_div.find_all('a', href=True):
         link_text = a.get_text(strip=True)
         href = a['href']
@@ -32,18 +31,17 @@ def clean_post_body(post_body_div):
 
     return post_body_div.get_text("\n", strip=True)
 
-# Poi usa questa funzione dentro clean_stackoverflow_content:
 def clean_stackoverflow_content(html_text: str) -> str:
     soup = BeautifulSoup(html_text, "html.parser")
     parts = []
     
-    # Domanda
+    #domanda
     question = soup.find("div", {"class": "js-post-body"}) # Il primo è solitamente la domanda
     if question:
         parts.append("## QUESTION")
         parts.append(clean_post_body(question))
 
-    # Risposte
+    #risposte
     answers = soup.select(".answer .js-post-body")
     if answers:
         parts.append("\n" + "="*20 + "\n## ANSWERS")
@@ -80,7 +78,6 @@ async def parse_stackoverflow(url: str) -> dict:
 
 # --- BLOCCO DI TEST ---
 if __name__ == "__main__":
-    # INSERISCI QUI IL LINK DI STACK OVERFLOW
     URL_TEST = "https://stackoverflow.com/questions/79925142/how-can-i-retrieve-the-fraction-of-functions-with-examples-purely-from-an-r-pack"
     #URL_TEST = "https://stackoverflow.com/questions/79925175/c26-reflection-how-to-actually-do-class-metaprogramming" 
     try:
