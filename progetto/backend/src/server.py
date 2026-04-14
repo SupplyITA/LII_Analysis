@@ -1,77 +1,95 @@
+import json
+import os
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException
-<<<<<<< HEAD
-from typing import List, Dict
-
-# qui: importare le future funzioni per la logica del parser
+from typing import List, Dict, Optional
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 
 app = FastAPI()
-=======
->>>>>>> origin/pippo
 
-# formato delle informazioni estratte dal parser
+# --- I TUOI MODELLI PYDANTIC ---
+
 class ParseResponse(BaseModel):
     url: str
     domain: str
     title: str
     html_text: str
     parsed_text: str
-<<<<<<< HEAD
 
-# formato dati quantitativi
 class TokenLevelEval(BaseModel):
     precision: float
     recall: float
     f1: float
     
-# formato finale del json che verrà inviato al client
 class EvaluationResponse(BaseModel):
     token_level_eval: TokenLevelEval
+    x_eval: Optional[Dict] = {} # Aggiunto per flessibilità
 
-# input del POST
 class EvaluateRequest(BaseModel):
     parsed_text : str
     gold_text: str
 
+# --- LOGICA DI SUPPORTO ---
 
-'''
-○ GET /parse: esegue il parser per un documento di un dominio
-○ GET /domains: restituisce la lista dei domini assegnati
-○ GET /gold_standard: restituisce il gold standard per un documento 
-○ GET /full_gold_standard: restituisce tutto il GS del dominio
-○ POST /evaluate: dato risultato parsing e gs restituisce le metriche di evaluation
-○ GET /full_gs_eval: restituisce l’evaluation aggregata su tutto il GS 
-'''
+def load_domains():
+    with open("../domains.json", "r") as f:
+        return json.load(f)["domains"]
 
-@app.get("/parse", response_model = ParseResponse)
+# --- I TUOI ENDPOINT CON LA LOGICA INSERITA ---
+
+@app.get("/parse", response_model=ParseResponse)
 async def parse(url: str):
-    # logica del parser (definita in un file a parte)
-    pass
+    domains = load_domains()
+    # Controllo se il dominio è supportato [cite: 466]
+    if not any(d in url for d in domains):
+        raise HTTPException(status_code=400, detail="Dominio non supportato")
+    
+    # Logica Crawl4AI [cite: 172-181]
+    async with AsyncWebCrawler() as crawler:
+        result = await crawler.arun(url=url)
+        if not result.success:
+            raise HTTPException(status_code=404, detail="URL irraggiungibile")
+        
+        return ParseResponse(
+            url=url,
+            domain=next(d for d in domains if d in url),
+            title="Titolo da estrarre", 
+            html_text=result.html,
+            parsed_text=result.markdown
+        )
 
 @app.get("/domains")
 def get_domains():
-    pass
+    return {"domains": load_domains()} [cite: 497-501]
 
 @app.get("/gold_standard")
-def get_gold_standard(domain: str):
-    # logica per cercare il testo perfetto per il dominio
-    pass
+def get_gold_standard(url: str): # Corretto da 'domain' a 'url' come da specifica 
+    domains = load_domains()
+    for d in domains:
+        path = f"../gs_data/{d}_gs.json"
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                gs_list = json.load(f)
+                for entry in gs_list:
+                    if entry["url"] == url:
+                        return entry
+    raise HTTPException(status_code=404, detail="URL non trovato nel GS")
 
-@app.get("/full_gold_standard")
-def get_full_gold_standard(url:str):
-    pass
-
-@app.post("/evaluate", response_model = EvaluationResponse)
+@app.post("/evaluate", response_model=EvaluationResponse)
 def evaluate(request: EvaluateRequest):
-    # logiche per calcolare la precisione
-    pass
-
-@app.get("/full_gs_eval")
-def full_gs_eval(domain: str):
-    pass
-
-
-
-=======
+    # Logica token_level_eval (minuscolo e split per spazi) [cite: 428-438]
+    tokens_p = set(request.parsed_text.lower().split())
+    tokens_g = set(request.gold_text.lower().split())
     
->>>>>>> origin/pippo
+    inter = len(tokens_p.intersection(tokens_g))
+    prec = inter / len(tokens_p) if tokens_p else 0
+    rec = inter / len(tokens_g) if tokens_g else 0
+    f1 = (2 * prec * rec) / (prec + rec) if (prec + rec) > 0 else 0
+    
+    return {
+        "token_level_eval": {
+            "precision": round(prec, 2),
+            "recall": round(rec, 2),
+            "f1": round(f1, 2)
+        }
+    }
