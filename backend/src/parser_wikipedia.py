@@ -18,29 +18,42 @@ def clean_wikipedia_content(html: str) -> str:
     soup = BeautifulSoup(html, "html.parser")
     
     content = soup.find("div", {"id": "mw-content-text"})
-    if not content:
-        #fallback se non trova il div specifico
-        content = soup.find("main") or soup.body
-        if not content: return ""
+    if not content: return ""
+        
 
     #rimuoviamo tutto quello che non ci interessa
     for element in content.select('.infobox, .reflist, .navbox, .mw-editsection, .ambox, .mw-jump-link, .metadata, sup.reference'):
         element.decompose()
 
+    #i link <a> in formato Markdown [testo](url)
+    for a in content.find_all('a', href=True):
+        link_text = a.get_text(strip=True)
+        href = a['href']
+        # Se il link è relativo (es. /wiki/Horse), lo rendiamo assoluto
+        if href.startswith('/wiki/'):
+            href = f"https://en.wikipedia.org{href}"
+        if link_text:
+            a.replace_with(f"[{link_text}]({href})")
+
     parts = []
-    # Prendiamo solo i titoli di sezione e i paragrafi
-    for tag in content.find_all(['h2', 'h3', 'p']):
-        text = tag.get_text().strip()
-        if text:
-            if tag.name == 'h2':
-                # Puliamo i titoli
-                clean_text = text.split('[')[0].strip()
-                parts.append(f"## {clean_text}")
-            elif tag.name == 'h3':
-                clean_text = text.split('[')[0].strip()
-                parts.append(f"### {clean_text}")
-            else:
-                parts.append(text)
+    #cerchiamo i tag rilevanti includendo 'table' per le wiki-table
+    for tag in content.find_all(['h2', 'h3', 'p', 'table']):
+        if tag.name == 'table':
+            # Estraiamo il testo della tabella. In questa fase non serve 
+            # un formato perfetto, l'importante è preservare i dati.
+            table_text = tag.get_text(" | ", strip=True)
+            if table_text:
+                parts.append(f"\n| {table_text} |\n")
+        elif tag.name in ['h2', 'h3']:
+            title_text = tag.get_text().strip()
+            # Pulizia residua per titoli che contengono link
+            clean_title = title_text.split('[')[0].strip()
+            level = "##" if tag.name == 'h2' else "###"
+            parts.append(f"{level} {clean_title}")
+        else:
+            p_text = tag.get_text().strip()
+            if p_text:
+                parts.append(p_text)
 
     return "\n\n".join(parts)
 
