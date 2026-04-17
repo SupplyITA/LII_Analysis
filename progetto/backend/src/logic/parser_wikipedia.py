@@ -1,26 +1,4 @@
 import asyncio
-<<<<<<< HEAD
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
-
-async def main():
-    # configura il browser (headless = senza finestra visibile)
-    browser_cfg = BrowserConfig(headless=False)
-
-    # configura la richiesta (BYPASS = scarica sempre dalla rete, ignora cache)
-    crawler_cfg = CrawlerRunConfig(cache_mode=CacheMode.BYPASS) '''css_selector="#bodyContent")'''
-
-    # apre il browser e lo chiude automaticamente alla fine del blocco
-    async with AsyncWebCrawler(config=browser_cfg) as crawler:
-
-        # visita la pagina e aspetta che il crawl sia completato
-        result = await crawler.arun(
-            url="https://en.wikipedia.org/wiki/Horse",
-            config=crawler_cfg
-        )
-
-        
-
-=======
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
@@ -28,6 +6,7 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 
 
 def get_domain(url: str) -> str:
+    """Estrae il dominio dall'URL """    
     parsed = urlparse(url)
     return parsed.netloc.lower()
 
@@ -42,16 +21,12 @@ def clean_wikipedia_content(html: str) -> str:
     content = soup.find("div", {"id": "mw-content-text"})
     if not content: return ""
         
-
-    #rimuoviamo tutto quello che non ci interessa
     for element in content.select('.infobox, .reflist, .navbox, .mw-editsection, .ambox, .mw-jump-link, .metadata, sup.reference'):
         element.decompose()
 
-    #i link <a> in formato Markdown [testo](url)
     for a in content.find_all('a', href=True):
         link_text = a.get_text(strip=True)
         href = a['href']
-        # se il link è relativo (es. /wiki/Horse), lo rendiamo assoluto
         if href.startswith('/wiki/'):
             href = f"https://en.wikipedia.org{href}"
         if link_text:
@@ -102,21 +77,8 @@ async def parse_wikipedia(url: str) -> dict:
             "html_text": html_grezzo,
             "parsed_text": parsed_text
         }
-        
->>>>>>> origin/pippo
-        # result.success        → True se il crawl è andato a buon fine
-        # result.error_message  → messaggio d'errore in caso di fallimento
-        # result.markdown       → testo in Markdown, pronto per LLM e RAG
-        # result.cleaned_html   → HTML ripulito da script, stili e rumore
-        # result.html           → HTML completo della pagina (non ripulito)
-<<<<<<< HEAD
-        print(result.markdown)
 
-# avvia il programma asincrono
-asyncio.run(main())
-=======
-
-# test
+# -- BLOCCO DI TEST LOCALE --        
 if __name__ == "__main__":
 
     test_url = "https://en.wikipedia.org/wiki/Horse"
@@ -133,4 +95,3 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Si è verificato un errore: {e}")
 
->>>>>>> origin/pippo
