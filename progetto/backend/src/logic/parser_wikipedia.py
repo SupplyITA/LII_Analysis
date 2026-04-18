@@ -2,6 +2,8 @@ import asyncio
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
+import re
+import json
 # in ordine sotto: motore del crawler, configurazione browser, configurazione request, modalità di cache
 
 
@@ -92,6 +94,15 @@ if __name__ == "__main__":
         print(res['parsed_text'][:500])
         print("-" * 30)
         print("Parsing completato con successo!")
+        gs_entry = [{
+            "url": res['url'],
+            "domain": res['domain'],
+            "title": res['title'],
+            "html_text": res['html_text'],
+            "golden_text": ""
+        }]
+        with open("en.wikipedia.org_gs.json", "w", encoding="utf-8") as f:
+            json.dump(gs_entry, f, ensure_ascii=False, indent=4)
     except Exception as e:
         print(f"Si è verificato un errore: {e}")
 
