@@ -44,7 +44,7 @@ def clean_wikipedia_content(html: str) -> str:
                 parts.append(f"\n| {table_text} |\n")
         elif tag.name in ['h2', 'h3']:
             title_text = tag.get_text().strip()
-            clean_title = title_text.split('[')[0].strip()
+            clean_title = title_text.split('[')[0].strip() 
             level = "##" if tag.name == 'h2' else "###"
             parts.append(f"{level} {clean_title}")
         else:
@@ -84,14 +84,14 @@ async def parse_wikipedia(url: str) -> dict:
 # -- BLOCCO DI TEST LOCALE --        
 if __name__ == "__main__":
 
-   test_url = "https://en.wikipedia.org/wiki/Horse" 
+    test_url = "https://en.wikipedia.org/wiki/Artemis_II" 
    
-   mio_gold_text_manuale = """
-    """
+    mio_gold_text_manuale = """
+"""
    
-   filename = "en.wikipedia.org_gs.json"
+    filename = "en.wikipedia.org_gs.json"
    
-   try:
+    try:
         res = asyncio.run(parse_wikipedia(test_url))
         
 
@@ -114,11 +114,6 @@ if __name__ == "__main__":
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(dati_esistenti, f, indent=4, ensure_ascii=False)
 
-        print("-" * 30)
-        print(f"SUCCESSO: Pagina '{res['title']}' aggiunta al file {filename}")
-        print(f"Pagine totali nel file: {len(dati_esistenti)}")
-        print("-" * 30)
-    
     except Exception as e:
         print(f"Si è verificato un errore: {e}")
 
