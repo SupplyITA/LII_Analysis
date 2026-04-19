@@ -1,5 +1,19 @@
+version: '3.8'
+
 services:
   backend:
     build: ./backend
+    container_name: minerva_backend
     ports:
       - "8003:8003"
+    volumes:
+      - ./gs_data:/gs_data
+      - ./domains.json:/domains.json
+
+  frontend:
+    build: ./frontend
+    container_name: minerva_frontend
+    ports:
+      - "8004:8004"
+    depends_on:
+      - backend
