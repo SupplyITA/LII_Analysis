@@ -1,4 +1,6 @@
 import asyncio
+import json
+import os
 from bs4 import BeautifulSoup
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 
@@ -25,17 +27,36 @@ async def parse_huddle(url: str) -> dict:
         }
     
 if __name__ == "__main__":
-    URL_TEST = "https://www.huddle.org/2024/09/detroit-per-i-numeri-tampa-per-il-risultato-tampa-bay-buccaneers-vs-detroit-lions-20-16/"
-    
-    print(f"--- TEST HUDDLE: {URL_TEST} ---")
+
+    test_url = "https://en.wikipedia.org/wiki/Artemis_II" 
+   
+    mio_gold_text_manuale = """
+"""
+   
+    filename = "en.wikipedia.org_gs.json"
+   
     try:
-        res = asyncio.run(parse_huddle(URL_TEST))
-        print(f"TITOLO: {res['title']}")
-        print(f"DOMINIO: {res['domain']}")
-        print("-" * 30)
-        print("ESTRATTO (Primi 500 caratteri):")
-        print(res['parsed_text'][:500])
-        print("-" * 30)
-        print("Test completato.")
+        res = asyncio.run(parse_huddle(test_url))
+        
+
+        nuova_entry = {
+            "url": res['url'],
+            "domain": res['domain'],
+            "title": res['title'],
+            "html_text": res['html_text'], 
+            "gold_text": mio_gold_text_manuale.strip()
+        }
+
+        if os.path.exists(filename):
+            with open(filename, "r", encoding="utf-8") as f:
+                dati_esistenti = json.load(f)
+        else:
+            dati_esistenti = []
+
+        # Aggiunge la pagina e salva
+        dati_esistenti.append(nuova_entry)
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(dati_esistenti, f, indent=4, ensure_ascii=False)
+
     except Exception as e:
         print(f"Errore durante il test: {e}")
