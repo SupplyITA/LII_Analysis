@@ -83,7 +83,7 @@ async def parse_wikipedia(url: str) -> dict:
 # -- BLOCCO DI TEST LOCALE --        
 if __name__ == "__main__":
 
-    test_url = "https://en.wikipedia.org/wiki/Horse"
+    test_url = "https://en.wikipedia.org/wiki/Rover_(space_exploration)"
     try:
         res = asyncio.run(parse_wikipedia(test_url))
         print(f"URL: {res['url']}")
@@ -101,7 +101,7 @@ if __name__ == "__main__":
             "html_text": res['html_text'],
             "golden_text": ""
         }]
-        with open("en.wikipedia.org_gs.json", "w", encoding="utf-8") as f:
+        with open("en.wikipedia.org_gs1.json", "w", encoding="utf-8") as f:
             json.dump(gs_entry, f, ensure_ascii=False, indent=4)
     except Exception as e:
         print(f"Si è verificato un errore: {e}")
