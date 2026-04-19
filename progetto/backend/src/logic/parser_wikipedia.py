@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 import re
 import json
+import os
 # in ordine sotto: motore del crawler, configurazione browser, configurazione request, modalità di cache
 
 
@@ -83,26 +84,41 @@ async def parse_wikipedia(url: str) -> dict:
 # -- BLOCCO DI TEST LOCALE --        
 if __name__ == "__main__":
 
-    test_url = "https://en.wikipedia.org/wiki/Rover_(space_exploration)"
-    try:
+   test_url = "https://en.wikipedia.org/wiki/Horse" 
+   
+   mio_gold_text_manuale = """
+    """
+   
+   filename = "en.wikipedia.org_gs.json"
+   
+   try:
         res = asyncio.run(parse_wikipedia(test_url))
-        print(f"URL: {res['url']}")
-        print(f"TITOLO: {res['title']}")
-        print(f"DOMINIO: {res['domain']}")
-        print("-" * 30)
-        print("ESTRATTO (primi 500 caratteri):")
-        print(res['parsed_text'][:500])
-        print("-" * 30)
-        print("Parsing completato con successo!")
-        gs_entry = [{
+        
+
+        nuova_entry = {
             "url": res['url'],
             "domain": res['domain'],
             "title": res['title'],
-            "html_text": res['html_text'],
-            "golden_text": ""
-        }]
-        with open("en.wikipedia.org_gs1.json", "w", encoding="utf-8") as f:
-            json.dump(gs_entry, f, ensure_ascii=False, indent=4)
+            "html_text": res['html_text'], 
+            "gold_text": mio_gold_text_manuale.strip()
+        }
+
+        if os.path.exists(filename):
+            with open(filename, "r", encoding="utf-8") as f:
+                dati_esistenti = json.load(f)
+        else:
+            dati_esistenti = []
+
+        # Aggiunge la pagina e salva
+        dati_esistenti.append(nuova_entry)
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(dati_esistenti, f, indent=4, ensure_ascii=False)
+
+        print("-" * 30)
+        print(f"SUCCESSO: Pagina '{res['title']}' aggiunta al file {filename}")
+        print(f"Pagine totali nel file: {len(dati_esistenti)}")
+        print("-" * 30)
+    
     except Exception as e:
         print(f"Si è verificato un errore: {e}")
 
