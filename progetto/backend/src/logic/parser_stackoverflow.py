@@ -23,7 +23,6 @@ def clean_post_body(post_body_div):
             code_text = code.get_text()
             pre.replace_with(f"\n```cpp\n{code_text}\n```\n") 
 
-    #link in Markdown [testo](url)
     for a in post_body_div.find_all('a', href=True):
         link_text = a.get_text(strip=True)
         href = a['href']
@@ -54,7 +53,7 @@ def clean_stackoverflow_content(html_text: str) -> str:
 
     return "\n\n".join(parts)
 
-async def parse_stackoverflow(url: str) -> dict:
+async def parser_stackoverflow(url: str) -> dict:
     browser_cfg = BrowserConfig(headless=True)
     crawler_cfg = CrawlerRunConfig(cache_mode=CacheMode.BYPASS)
 
@@ -89,7 +88,7 @@ if __name__ == "__main__":
     filename = "en.wikipedia.org_gs.json"
    
     try:
-        res = asyncio.run(parse_stackoverflow(test_url))
+        res = asyncio.run(parser_stackoverflow(test_url))
         
 
         nuova_entry = {

@@ -2,3 +2,5 @@ fastapi
 uvicorn
 pydantic
 crawl4ai
+mistune
+beautifulsoup4

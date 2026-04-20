@@ -1,54 +1,82 @@
 import asyncio
 import json
 import os
-from bs4 import BeautifulSoup
+import re
+from urllib.parse import urlparse
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 
-def clean_academia_content(html_text: str) -> str:
-    soup = BeautifulSoup(html_text, "html.parser")
-    
-    for banner in soup.select('.cookie-policy, .consent-banner, #cookie-notice, .privacy-policy'):
-        banner.decompose()
+def get_domain(url: str) -> str:   
+    parsed = urlparse(url)
+    return parsed.netloc.lower()
+
+def clean_academia_markdown(md_text: str) -> str:
+    """Pulisce il markdown usando solo RegEx e logica sulle stringhe."""
+    if not md_text:
+        return "Contenuto non individuato."
 
     
-    content = soup.select_one('.abstract-text') or \
-              soup.select_one('.p-about') or \
-              soup.select_one('.work-show-full-text')
+    md_text = re.sub(r'!\[.*?\]\(.*?\)', '', md_text)
     
-    if content:
-        return "\n\n".join([p.get_text(strip=True) for p in content.find_all('p') if len(p.get_text()) > 20])
+    md_text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', md_text)
 
-    fallback_texts = []
-    for p in soup.find_all('p'):
-        t = p.get_text(strip=True)
-        if len(t) > 60 and "cookie" not in t.lower() and "privacy policy" not in t.lower():
-            fallback_texts.append(t)
-            
-    return "\n\n".join(fallback_texts) if fallback_texts else "Contenuto non individuato."
+    lines = md_text.split('\n')
+    clean_lines = []
+    blacklist = ["download pdf", "related papers", "cookie policy", "privacy policy", "log in", "sign up", "loading preview"]
+    
+    for line in lines:
+        line_str = line.strip()
+        if not line_str:
+            continue
+        if any(bad_word in line_str.lower() for bad_word in blacklist):
+            continue
+        if len(line_str) > 50 or line_str.startswith('#'):
+            clean_lines.append(line_str)
 
-async def parse_academia(url: str) -> dict:
+    return "\n\n".join(clean_lines)
+
+
+async def parser_academia(url: str, html_raw: str = None) -> dict:
     async with AsyncWebCrawler(config=BrowserConfig(headless=True)) as crawler:
-        result = await crawler.arun(url=url, config=CrawlerRunConfig(cache_mode=CacheMode.BYPASS))
-        soup = BeautifulSoup(result.html, "html.parser")
-        title = soup.find("h1").get_text().strip() if soup.find("h1") else "Academia Paper"
+        
+        target = f"raw:{html_raw}" if html_raw else url
+        
+        result = await crawler.arun(url=target, config=CrawlerRunConfig(cache_mode=CacheMode.BYPASS))
+
+        if not result.success:
+            raise Exception(f"Crawl fallito: {result.error_message}")
+
+        title = "Academia Paper"
+        title_match = re.search(r'<title>(.*?)</title>', result.html, re.IGNORECASE)
+        if title_match:
+            title = title_match.group(1).replace(" | Academia.edu", "").strip()
+
         return {
-            "url": url, "domain": "academia.edu", "title": title,
-            "html_text": result.html, "parsed_text": clean_academia_content(result.html)
+            "url": url, 
+            "domain": get_domain(url), 
+            "title": title,
+            "html_text": result.html,
+            "parsed_text": clean_academia_markdown(result.markdown)
         }
+        
+        
     
 if __name__ == "__main__":
 
-    test_url = "https://en.wikipedia.org/wiki/Artemis_II" 
+    test_url = "https://www.academia.edu/32357079/Non_Timber_Forest_Produce_Utilization_Distribution_and_Status_in_the_Khangchendzonga_Biosphere_Reserve_Sikkim_India" 
    
-    mio_gold_text_manuale = """
+    mio_gold_text_manuale = """ountains are important repository of valuable resources and provide services to one third of the humanity living in this planet. Sikkim Himalaya is endowed with wide variety of non-timber forest produce (NTFP). M The ethno-cultural fabrics of this tiny state are rich in traditional practices. As a result, the people living in the Khangchendzonga complex use these natural resources in various ways for their subsistence. The study recorded 94 odd numbers of NTFPs from the area. Above 50% of these species are marketed in the local Hats with a minimum price, which otherwise have good potential in local economy. About 10% of the total species distribution was found to be a concern for conservation. Some of the high value medicinal plants have potential for value addition as well as domestication. Therefore, a strategic plan is needed for conservation of these valuable resources and for sustainable development.
+The study documents 94 non-timber forest products (NTFPs) from the Khangchendzonga Biosphere Reserve.
+Over 50% of the recorded NTFPs are marketed, primarily wild edibles and medicinal herbs.
+Approximately 10% of NTFP species are conservation concerns, highlighting the need for strategic planning.
+Rural communities in Sikkim rely heavily on NTFPs for subsistence and economic stability.
+Training in NTFP cultivation and management is essential for sustainable development and biodiversity conservation.
 """
    
-    filename = "en.wikipedia.org_gs.json"
+    filename = "academia.edu_gs.json"
    
     try:
-        res = asyncio.run(parse_academia(test_url))
+        res = asyncio.run(parser_academia(test_url))
         
-
         nuova_entry = {
             "url": res['url'],
             "domain": res['domain'],
@@ -59,14 +87,18 @@ if __name__ == "__main__":
 
         if os.path.exists(filename):
             with open(filename, "r", encoding="utf-8") as f:
-                dati_esistenti = json.load(f)
+                try:
+                    dati_esistenti = json.load(f)
+                except json.JSONDecodeError:
+                    dati_esistenti = []
         else:
             dati_esistenti = []
 
-        # Aggiunge la pagina e salva
         dati_esistenti.append(nuova_entry)
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(dati_esistenti, f, indent=4, ensure_ascii=False)
+            
+        print(f"SUCCESSO: Pagina aggiunta al file {filename}.")
 
     except Exception as e:
         print(f"Errore durante il test: {e}")

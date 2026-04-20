@@ -1,62 +1,76 @@
 import asyncio
 import json
 import os
-from bs4 import BeautifulSoup
+from urllib.parse import urlparse
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 
-def clean_huddle_content(html_text: str) -> str:
-    soup = BeautifulSoup(html_text, "html.parser")
-    content = soup.find("div", {"class": "entry-content"}) or soup.find("article")
-    if not content: return ""
-    for a in content.find_all('a', href=True):
-        if a.get_text(strip=True): a.replace_with(f"[{a.get_text(strip=True)}]({a['href']})")
-    parts = []
-    for tag in content.find_all(['h2', 'h3', 'p', 'table']):
-        if tag.name == 'table': parts.append(f"| {tag.get_text(' | ', strip=True)} |")
-        else: parts.append(f"{'## ' if tag.name=='h2' else ''}{tag.get_text(strip=True)}")
-    return "\n\n".join(parts)
+def get_domain(url: str) -> str:
+    parsed = urlparse(url)
+    return parsed.netloc.lower()
 
-async def parse_huddle(url: str) -> dict:
-    async with AsyncWebCrawler(config=BrowserConfig(headless=True)) as crawler:
-        result = await crawler.arun(url=url, config=CrawlerRunConfig(cache_mode=CacheMode.BYPASS))
-        soup = BeautifulSoup(result.html, "html.parser")
-        title = soup.find("h1").get_text().strip()
-        return {
-            "url": url, "domain": "huddle.org", "title": title,
-            "html_text": result.html, "parsed_text": clean_huddle_content(result.html)
-        }
+async def parser_huddle(url: str, html_raw: str = None) -> dict:
+    browser_cfg = BrowserConfig(headless=True)
     
-if __name__ == "__main__":
-
-    test_url = "https://en.wikipedia.org/wiki/Artemis_II" 
-   
-    mio_gold_text_manuale = """
-"""
-   
-    filename = "en.wikipedia.org_gs.json"
-   
-    try:
-        res = asyncio.run(parse_huddle(test_url))
+    crawler_cfg = CrawlerRunConfig(
+        cache_mode=CacheMode.BYPASS,
+        css_selector="article", 
+        excluded_tags=['header', 'footer', 'nav'] # Solo tag puri, niente punti
+    )
+    
+    async with AsyncWebCrawler(config=browser_cfg) as crawler:
+        target = f"raw:{html_raw}" if html_raw else url
         
-
-        nuova_entry = {
-            "url": res['url'],
-            "domain": res['domain'],
-            "title": res['title'],
-            "html_text": res['html_text'], 
-            "gold_text": mio_gold_text_manuale.strip()
+        result = await crawler.arun(url=target, config=crawler_cfg)
+        
+        if not result.success:
+            raise Exception(f"Errore durante il crawling: {result.error_message}")
+        
+        title = result.metadata.get('title', 'Titolo non trovato') if result.metadata else "Titolo non trovato"
+        
+        return {
+            "url": url,
+            "domain": get_domain(url),
+            "title": title,
+            "html_text": result.html,
+            "parsed_text": result.markdown
         }
 
-        if os.path.exists(filename):
-            with open(filename, "r", encoding="utf-8") as f:
-                dati_esistenti = json.load(f)
-        else:
-            dati_esistenti = []
+async def aggiorna_huddle_gs():
+    filename = "huddle.org_gs.json"
+    
+    if not os.path.exists(filename):
+        print(f"Errore: Il file {filename} non esiste. Assicurati di crearlo prima.")
+        return
 
-        # Aggiunge la pagina e salva
-        dati_esistenti.append(nuova_entry)
-        with open(filename, "w", encoding="utf-8") as f:
-            json.dump(dati_esistenti, f, indent=4, ensure_ascii=False)
+    with open(filename, "r", encoding="utf-8") as f:
+        try:
+            pagine_vecchie = json.load(f)
+        except json.JSONDecodeError:
+            pagine_vecchie = []
 
-    except Exception as e:
-        print(f"Errore durante il test: {e}")
+    pagine_aggiornate = []
+
+    for entry in pagine_vecchie:
+        print(f"Aggiornamento per: {entry['url']}...")
+        try:
+            res = await parser_huddle(entry['url'])
+            
+            nuova_entry = {
+                "url": entry['url'],
+                "domain": entry['domain'],
+                "title": res['title'],
+                "html_text": res['html_text'], 
+                "gold_text": entry['gold_text']
+            }
+            pagine_aggiornate.append(nuova_entry)
+        except Exception as e:
+            print(f"Errore su {entry['url']}: {e}. Mantengo la vecchia entry.")
+            pagine_aggiornate.append(entry)
+
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(pagine_aggiornate, f, indent=4, ensure_ascii=False)
+    
+    print(f"\nFatto! {len(pagine_aggiornate)} pagine di Huddle aggiornate al nuovo formato.")
+
+if __name__ == "__main__":
+    asyncio.run(aggiorna_huddle_gs())

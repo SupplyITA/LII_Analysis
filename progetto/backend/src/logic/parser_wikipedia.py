@@ -1,119 +1,78 @@
 import asyncio
-from urllib.parse import urlparse
-from bs4 import BeautifulSoup
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
-import re
 import json
 import os
-# in ordine sotto: motore del crawler, configurazione browser, configurazione request, modalità di cache
-
+from urllib.parse import urlparse
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 
 def get_domain(url: str) -> str:
-    """Estrae il dominio dall'URL """    
+
     parsed = urlparse(url)
     return parsed.netloc.lower()
 
+async def parser_wikipedia(url: str, html_raw: str = None) -> dict:
 
-def clean_wikipedia_content(html: str) -> str:
-    """Estrae solo il contenuto informativo dell'articolo."""
-    if not html:
-        return ""
-    
-    soup = BeautifulSoup(html, "html.parser")
-    
-    content = soup.find("div", {"id": "mw-content-text"})
-    if not content: return ""
-        
-    for element in content.select('.infobox, .reflist, .navbox, .mw-editsection, .ambox, .mw-jump-link, .metadata, sup.reference'):
-        element.decompose()
-
-    for a in content.find_all('a', href=True):
-        link_text = a.get_text(strip=True)
-        href = a['href']
-        if href.startswith('/wiki/'):
-            href = f"https://en.wikipedia.org{href}"
-        if link_text:
-            a.replace_with(f"[{link_text}]({href})")
-
-    parts = []
-    #cerchiamo i tag rilevanti includendo 'table' per le wiki-table
-    for tag in content.find_all(['h2', 'h3', 'p', 'table']):
-        if tag.name == 'table':
-            table_text = tag.get_text(" | ", strip=True)
-            if table_text:
-                parts.append(f"\n| {table_text} |\n")
-        elif tag.name in ['h2', 'h3']:
-            title_text = tag.get_text().strip()
-            clean_title = title_text.split('[')[0].strip() 
-            level = "##" if tag.name == 'h2' else "###"
-            parts.append(f"{level} {clean_title}")
-        else:
-            p_text = tag.get_text().strip()
-            if p_text:
-                parts.append(p_text)
-
-    return "\n\n".join(parts)
-
-async def parse_wikipedia(url: str) -> dict:
     browser_cfg = BrowserConfig(headless=True)
-    crawler_cfg = CrawlerRunConfig(cache_mode=CacheMode.BYPASS)
-
+    
+    crawler_cfg = CrawlerRunConfig(
+        cache_mode=CacheMode.BYPASS,
+        css_selector="#mw-content-text",
+        excluded_tags=[
+            '.infobox', '.reflist', '.navbox', '.mw-editsection', 
+            '.reference', '.metadata', '#See_also', '#References', 
+            '#Further_reading', '#External_links'
+        ]
+    )
 
     async with AsyncWebCrawler(config=browser_cfg) as crawler:
-        result = await crawler.arun(url=url, config=crawler_cfg)
+        target = f"raw:{html_raw}" if html_raw else url
+        
+        result = await crawler.arun(url=target, config=crawler_cfg)
 
         if not result.success:
-            raise Exception(f"Errore: {result.error_message}")
+            raise Exception(f"Errore durante il crawling: {result.error_message}")
 
-        html_grezzo = result.html
-        soup = BeautifulSoup(html_grezzo, "html.parser")
-        
-        title_tag = soup.find("h1", {"id": "firstHeading"}) or soup.find("h1")
-        title = title_tag.get_text().strip() if title_tag else "No Title Found"
-
-        parsed_text = clean_wikipedia_content(html_grezzo)
+        title = result.metadata.get('title', 'No Title Found') if result.metadata else "No Title Found"
 
         return {
             "url": url,
             "domain": get_domain(url),
             "title": title,
-            "html_text": html_grezzo,
-            "parsed_text": parsed_text
+            "html_text": result.html,
+            "parsed_text": result.markdown  
         }
 
-# -- BLOCCO DI TEST LOCALE --        
+async def aggiorna_gold_standard(filename):
+    """Aggiorna il file JSON esistente mantenendo i gold_text manuali."""
+    if not os.path.exists(filename):
+        print(f"Errore: Il file {filename} non esiste.")
+        return
+
+    with open(filename, "r", encoding="utf-8") as f:
+        pagine_vecchie = json.load(f)
+
+    pagine_aggiornate = []
+    
+    for entry in pagine_vecchie:
+        print(f"Aggiornamento per: {entry['url']}...")
+        try:
+            res = await parser_wikipedia(entry['url'])
+            
+            nuova_entry = {
+                "url": entry['url'],
+                "domain": entry['domain'],
+                "title": res['title'],
+                "html_text": res['html_text'], 
+                "gold_text": entry['gold_text'] 
+            }
+            pagine_aggiornate.append(nuova_entry)
+        except Exception as e:
+            print(f"Errore su {entry['url']}: {e}. Mantengo il vecchio.")
+            pagine_aggiornate.append(entry)
+
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(pagine_aggiornate, f, indent=4, ensure_ascii=False)
+    
+    print(f"\nTutte le {len(pagine_aggiornate)} pagine sono state aggiornate con successo.")
+
 if __name__ == "__main__":
-
-    test_url = "https://en.wikipedia.org/wiki/Artemis_II" 
-   
-    mio_gold_text_manuale = """
-"""
-   
-    filename = "en.wikipedia.org_gs.json"
-   
-    try:
-        res = asyncio.run(parse_wikipedia(test_url))
-        
-
-        nuova_entry = {
-            "url": res['url'],
-            "domain": res['domain'],
-            "title": res['title'],
-            "html_text": res['html_text'], 
-            "gold_text": mio_gold_text_manuale.strip()
-        }
-
-        if os.path.exists(filename):
-            with open(filename, "r", encoding="utf-8") as f:
-                dati_esistenti = json.load(f)
-        else:
-            dati_esistenti = []
-
-        # Aggiunge la pagina e salva
-        dati_esistenti.append(nuova_entry)
-        with open(filename, "w", encoding="utf-8") as f:
-            json.dump(dati_esistenti, f, indent=4, ensure_ascii=False)
-
-    except Exception as e:
-        print(f"Si è verificato un errore: {e}")
-
+    asyncio.run(aggiorna_gold_standard("en.wikipedia.org_gs.json"))

@@ -39,7 +39,7 @@ def clean_reddit_content(html_text: str) -> str:
                     parts.append(f"- {text}")
 
     return "\n\n".join(parts)
-async def parse_reddit(url: str) -> dict:
+async def parser_reddit(url: str) -> dict:
     browser_cfg = BrowserConfig(headless=True)
     crawler_cfg = CrawlerRunConfig(cache_mode=CacheMode.BYPASS)
 
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     filename = "en.wikipedia.org_gs.json"
    
     try:
-        res = asyncio.run(parse_reddit(test_url))
+        res = asyncio.run(parser_reddit(test_url))
         
 
         nuova_entry = {
