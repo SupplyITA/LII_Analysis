@@ -7,7 +7,8 @@
         .container { display: flex; flex-direction: column; gap: 20px; }
         .row { display: flex; gap: 10px; }
         .box { border: 1px solid #ccc; padding: 10px; width: 50%; height: 400px; overflow: auto; background: #f9f9f9; }
-        .metrics { background: #e0f0ff; padding: 15px; border-radius: 5px; }
+        .metrics { background: #e0f0ff; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        .error-box { color: #D8000C; background-color: #FFBABA; border: 1px solid #D8000C; padding: 10px; margin-top: 15px; border-radius: 5px; }
     </style>
 </head>
 <body>
@@ -27,6 +28,12 @@
         <button type="submit">Analizza</button>
     </form>
 
+    {% if error %}
+        <div class="error-box">
+            <b>Errore:</b> {{ error }}
+        </div>
+    {% endif %}
+
     {% if result %}
         <hr>
         <h2>Risultati per: {{ result.title }}</h2>
@@ -44,7 +51,7 @@
             <div class="row">
                 <div class="box">
                     <h3>HTML Grezzo</h3>
-                    <pre>{{ result.html_text }}</pre>
+                    <pre style="white-space: pre-wrap; word-wrap: break-word;">{{ result.html_text }}</pre>
                 </div>
                 <div class="box">
                     <h3>Testo Pulito (Parsed)</h3>

@@ -65,7 +65,7 @@ async def parser_stackoverflow(url: str) -> dict:
         full_html = result.html
         soup = BeautifulSoup(full_html, "html.parser")
         
-        # Titolo della domanda
+        
         title_tag = soup.find("h1", {"itemprop": "name"}) or soup.find("h1")
         title = title_tag.get_text().strip() if title_tag else "Stack Overflow Question"
 

@@ -36,10 +36,16 @@ async def parser_grammy(url: str, html_raw: str = None) -> dict:
         }
     
 if __name__ == "__main__":
-    test_url = "INSERISCI_QUI_URL_GRAMMY" 
+    test_url = "https://www.grammy.com/news/mastodon-reach-new-levels-of-heavy-on-emperor-of-sand" 
    
     mio_gold_text_manuale = """ 
-    
+For a band with such dark thematic imagery, serious metal pedigree and crushing sonic heft, Mastodon sure can ham it up. One look at the music video for "Show Yourself," the lead single from their new album, Emperor Of Sand, will make their knack for comedy abundantly clear. However, one listen to the album will remind you that, musically at least, they're not messing around.
+
+Mastodon's conceptually heavy Emperor of Sand follows 2014's Once More 'Round The Sun, which spawned a Best Metal Performance GRAMMY nomination for the song "High Road." Despite the band's jovial nature, the spirit and gravity of their new album was shaped largely by tragedy that touched their lives.
+
+"Some of the closest people to us were in the middle of some battles with cancer and some heavy-duty illness," said drummer/vocalist Brann Dailor. "If we were open and honest with everyone about what the record was about, then we knew that it could maybe have a positive impact with someone else."
+
+In this exclusive interview, Dailor and bassist/vocalist Troy Sanders talk about channeling personal pain and loss into artistic expression on Emperor Of Sand, how their common affinity and respect for Bay Area legends Neurosis brought them together, and what they enjoy most about the whirlwind of a new album-tour cycle.    
     """
    
     filename = "grammy.com_gs.json"

@@ -42,7 +42,7 @@ async def parser_wikipedia(url: str, html_raw: str = None) -> dict:
         }
 
 async def aggiorna_gold_standard(filename):
-    """Aggiorna il file JSON esistente mantenendo i gold_text manuali."""
+    
     if not os.path.exists(filename):
         print(f"Errore: Il file {filename} non esiste.")
         return

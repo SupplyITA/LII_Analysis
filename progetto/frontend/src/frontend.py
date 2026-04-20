@@ -33,30 +33,41 @@ async def index(request: Request):
 
 @app.post("/process", response_class=HTMLResponse)
 async def process_url(request: Request, url: str = Form(...)):
-    # 1. Chiamata al backend per il parsing
-    parse_data = requests.get(f"{BACKEND_URL}/parse?url={url}").json()
     
-    # 2. Controllo se l'URL è nel Gold Standard per mostrare il confronto
+    try:
+        domains = requests.get(f"{BACKEND_URL}/domains").json().get("domains", [])
+        all_gs_urls = []
+        for d in domains:
+            gs_resp = requests.get(f"{BACKEND_URL}/full_gold_standard?domain={d}").json()
+            for entry in gs_resp.get("gold_standard", []):
+                all_gs_urls.append(entry["url"])
+    except Exception:
+        all_gs_urls = []
+
+    parse_resp = requests.get(f"{BACKEND_URL}/parse?url={url}")
+    if parse_resp.status_code != 200:
+        error_data = parse_resp.json()
+        error_message = error_data.get("detail", "Errore durante il parsing dell'URL.")
+        return templates.TemplateResponse("index.html", {
+            "request": request,
+            "gs_urls": all_gs_urls,
+            "result": None,
+            "error": error_message
+        })
+    
+    parse_data = parse_resp.json()
     gs_data = None
     metrics = None
     gs_resp = requests.get(f"{BACKEND_URL}/gold_standard?url={url}")
     
     if gs_resp.status_code == 200:
         gs_data = gs_resp.json()
-        # 3. Se c'è il GS, chiediamo al backend di valutare le metriche
         eval_resp = requests.post(
             f"{BACKEND_URL}/evaluate", 
             json={"parsed_text": parse_data["parsed_text"], "gold_text": gs_data["gold_text"]}
         )
         if eval_resp.status_code == 200:
-            metrics = eval_resp.json()["token_level_eval"]
-
-    # Recupera di nuovo la lista URL per il menu
-    domains = requests.get(f"{BACKEND_URL}/domains").json().get("domains", [])
-    all_gs_urls = []
-    for d in domains:
-        gs_entries = requests.get(f"{BACKEND_URL}/full_gold_standard?domain={d}").json().get("gold_standard", [])
-        all_gs_urls.extend([e["url"] for e in gs_entries])
+            metrics = eval_resp.json().get("token_level_eval")
 
     return templates.TemplateResponse("index.html", {
         "request": request,
@@ -68,5 +79,6 @@ async def process_url(request: Request, url: str = Form(...)):
             "parsed_text": parse_data.get("parsed_text"),
             "gold_text": gs_data.get("gold_text") if gs_data else None,
             "metrics": metrics
-        }
+        },
+        "error": None
     })

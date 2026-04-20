@@ -14,7 +14,7 @@ async def parser_huddle(url: str, html_raw: str = None) -> dict:
     crawler_cfg = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS,
         css_selector="article", 
-        excluded_tags=['header', 'footer', 'nav'] # Solo tag puri, niente punti
+        excluded_tags=['header', 'footer', 'nav'] 
     )
     
     async with AsyncWebCrawler(config=browser_cfg) as crawler:
