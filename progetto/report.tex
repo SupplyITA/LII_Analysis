@@ -1,0 +1,50 @@
+\documentclass[11pt]{article}
+\usepackage{acl}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{inconsolata}
+\usepackage{graphicx}
+
+
+\aclfinalcopy 
+
+\title{Laboratorio di Ingegneria Informatica: Chatbot Minerva}
+
+\author{Matteo Martin Console \\
+  Matricola: 2112194 \\
+  \texttt{console.2112194@studenti.uniroma1.it} \\\And
+  Alice Agneni \\
+  Matricola:  2128893\\
+  \texttt{agneni.2128893@studenti.uniroma1.it} \\\And
+  Giulia Codella \\
+  Matricola: 2118019 \\
+  \texttt{codella.2118019@studenti.uniroma1.it} \\}
+
+\begin{document}
+\maketitle
+
+
+\section{Obiettivo del Progetto}
+Il progetto chatbot Minerva si pone l'obiettivo di realizzare una pipeline end-to-end per l'acquisizione, il parsing e l'analisi di documenti provenienti da sorgenti web eterogenee. 
+Il sistema è progettato per fornire una maggiore conoscenza per la Large Language Model (LLM) nazionale ``Minerva'', permettendogli di consultare il web in tempo reale e recuperare informazioni aggiornate. 
+L'architettura deve garantire un'integrazione dinamica di nuovi domini e precisione nell'estrazione del contenuto informativo, eliminando il rumore tipico delle pagine web (header, footer, menu di navigazione).
+
+\section{Organizzazione del Codice}
+Il progetto è suddiviso in due microservizi principali tramite Docker:
+\begin{itemize}
+    \item \textbf{Backend (FastAPI):} Gestisce la logica di business e l'esposizione delle REST API (porta 8003). La logica di parsing è segregata nel modulo \texttt{src.logic}, dove ogni dominio (Wikipedia, Huddle, ecc.) possiede un parser dedicato. 
+    \item \textbf{Frontend (FastAPI + Jinja2):} Fornisce una Web UI (porta 8004) per l'interazione umana. Utilizza il motore di templating Jinja2 per visualizzare dinamicamente i dati recuperati dal backend e permettere il confronto visivo tra HTML grezzo e testo parsato.
+    \item \textbf{Gestione Dati:} I file Gold Standard sono archiviati in formato JSON nella directory \texttt{gs\_data}, montata come volume nel container backend per permettere l'accesso persistente.
+\end{itemize}
+
+\section{Valutazione dei Parser}
+Per l'estrazione del testo è stata utilizzata la libreria \texttt{Crawl4AI}, sfruttando le sue capacità di conversione in Markdown e filtraggio tramite selettori CSS.
+\begin{enumerate}
+    \item \textbf{Creazione Gold Standard:} Per ogni dominio assegnato (en.wikipedia.org, huddle.org, grammy.com, academia.edu) sono stati selezionati 5 URL rappresentativi. Il testo `Gold' è stato ripulito manualmente per includere solo le informazioni rilevanti, secondo le direttive fornite.
+    \item \textbf{Metodologia di Valutazione:} La valutazione avviene a livello di token. Prima del calcolo, il testo viene normalizzato rimuovendo la sintassi Markdown e la punteggiatura superflua tramite espressioni regolari, garantendo che il calcolo di Precision, Recall e F1-Score non sia influenzato da rumore formattativo.
+\end{enumerate}
+
+\end{document}
