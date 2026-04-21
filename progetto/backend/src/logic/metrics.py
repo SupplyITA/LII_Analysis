@@ -1,11 +1,9 @@
 import re
 
-# trasforma il testo in un insieme di token puliti
 def get_tokens(text: str) -> set:
     clean_text = re.sub(r'[^\w\s]', ' ', text.lower())
     return set(clean_text.split())
 
-# calcola precision, recall, F1
 def compute_token_level_eval(parsed_text: str, gold_text: str) -> dict:
     extracted_tokens = get_tokens(parsed_text)
     gs_tokens = get_tokens(gold_text)

@@ -5,7 +5,6 @@ domains_path = os.path.join("..", "domains.json")
 gs_dir = os.path.join("..", "gs_data")
 
 
-# -- Logica di supporto per l'estrazione degli url --
 
 ''' Legge domains.json e restituisce la lista dei domini '''
 def load_domains() -> list:
