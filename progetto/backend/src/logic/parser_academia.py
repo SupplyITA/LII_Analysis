@@ -7,21 +7,31 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 
 def get_domain(url: str) -> str:   
     parsed = urlparse(url)
-    return parsed.netloc.lower()
+    domain = parsed.netloc.lower()
+    if domain.startswith("www."):
+        domain = domain[4:]
+    return domain
 
 def clean_academia_markdown(md_text: str) -> str:
     """Pulisce il markdown usando solo RegEx e logica sulle stringhe."""
     if not md_text:
         return "Contenuto non individuato."
 
-    
     md_text = re.sub(r'!\[.*?\]\(.*?\)', '', md_text)
     
     md_text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', md_text)
 
+    md_text = re.sub(r'(?i)(\bread more\b|\bcontinue reading\b|\.\.\.more)', '', md_text)
+
     lines = md_text.split('\n')
     clean_lines = []
-    blacklist = ["download pdf", "related papers", "cookie policy", "privacy policy", "log in", "sign up", "loading preview"]
+    
+    blacklist = [
+        "download pdf", "related papers", "cookie policy", "privacy policy", 
+        "log in", "sign up", "loading preview", "save to library", 
+        "view full text", "skip to main content", "search academia", 
+        "terms of use", "academia.edu"
+    ]
     
     for line in lines:
         line_str = line.strip()
@@ -29,7 +39,7 @@ def clean_academia_markdown(md_text: str) -> str:
             continue
         if any(bad_word in line_str.lower() for bad_word in blacklist):
             continue
-        if len(line_str) > 50 or line_str.startswith('#'):
+        if len(line_str) > 0 or line_str.startswith('#'):
             clean_lines.append(line_str)
 
     return "\n\n".join(clean_lines)
@@ -49,6 +59,8 @@ async def parser_academia(url: str, html_raw: str = None) -> dict:
         title_match = re.search(r'<title>(.*?)</title>', result.html, re.IGNORECASE)
         if title_match:
             title = title_match.group(1).replace(" | Academia.edu", "").strip()
+            # Rimuove (PDF), (DOC) o (DOCX) all'inizio del titolo (case-insensitive)
+            title = re.sub(r'^\s*\((?:PDF|DOC|DOCX)\)\s*', '', title, flags=re.IGNORECASE).strip()
 
         return {
             "url": url, 
@@ -62,14 +74,9 @@ async def parser_academia(url: str, html_raw: str = None) -> dict:
     
 if __name__ == "__main__":
 
-    test_url = "https://www.academia.edu/32357079/Non_Timber_Forest_Produce_Utilization_Distribution_and_Status_in_the_Khangchendzonga_Biosphere_Reserve_Sikkim_India" 
+    test_url = "https://www.academia.edu/15509220/What_Is_Software_Engineering#key-takeaways" 
    
-    mio_gold_text_manuale = """ountains are important repository of valuable resources and provide services to one third of the humanity living in this planet. Sikkim Himalaya is endowed with wide variety of non-timber forest produce (NTFP). M The ethno-cultural fabrics of this tiny state are rich in traditional practices. As a result, the people living in the Khangchendzonga complex use these natural resources in various ways for their subsistence. The study recorded 94 odd numbers of NTFPs from the area. Above 50% of these species are marketed in the local Hats with a minimum price, which otherwise have good potential in local economy. About 10% of the total species distribution was found to be a concern for conservation. Some of the high value medicinal plants have potential for value addition as well as domestication. Therefore, a strategic plan is needed for conservation of these valuable resources and for sustainable development.
-The study documents 94 non-timber forest products (NTFPs) from the Khangchendzonga Biosphere Reserve.
-Over 50% of the recorded NTFPs are marketed, primarily wild edibles and medicinal herbs.
-Approximately 10% of NTFP species are conservation concerns, highlighting the need for strategic planning.
-Rural communities in Sikkim rely heavily on NTFPs for subsistence and economic stability.
-Training in NTFP cultivation and management is essential for sustainable development and biodiversity conservation.
+    mio_gold_text_manuale = """A later translation (2015) of the article in Russian published in 1990. The article proposes an approach to defining a set of basic notions for subject area of software engineering discipline. The set of notions is intended to serve as a basis for detection and correction of some widespread conceptual mistakes in the efforts aimed at improving the quality and work productivity in creation and operation of software.
 """
    
     filename = "academia.edu_gs.json"
