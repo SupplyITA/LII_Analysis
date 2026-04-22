@@ -20,7 +20,6 @@ async def parser_grammy(url: str, html_raw: str = None) -> dict:
     )
     
     async with AsyncWebCrawler(config=browser_cfg) as crawler:
-        # CORREZIONE: Definizione di target prima dell'invocazione di arun
         target = f"raw:{html_raw}" if html_raw else url
         result = await crawler.arun(url=target, config=crawler_cfg)
         
@@ -31,17 +30,12 @@ async def parser_grammy(url: str, html_raw: str = None) -> dict:
         title = result.metadata.get("title") if result.metadata else None        
         
         if not title or title.lower() == "grammy":
-            # Questa regex cerca righe che iniziano con uno o più cancelletti (H1, H2, ecc.)
-            # Usiamo #+ per essere flessibili sulla struttura della pagina
             h_match = re.search(r'^#+\s+(.*)', result.markdown, re.MULTILINE)
             if h_match:
                 title = h_match.group(1).strip()
 
-        # 3. Pulizia finale
         if title:
-            # Decodifichiamo i simboli (es. &amp; -> &)
             title = html.unescape(title)
-            # Tagliamo sui separatori di sito tipici (| o —), rimosso split('-') per non rompere i nomi composti
             title = title.split('|')[0].split('—')[0].strip()
         else:
             title = "Grammy Resource"
@@ -54,17 +48,7 @@ async def parser_grammy(url: str, html_raw: str = None) -> dict:
                 "parsed_text": result.markdown
             }
         
-        '''
-        title = result.metadata.get('title', 'Grammy News') if result.metadata else " "
-        
-        return {
-            "url": url, 
-            "domain": get_domain(url), 
-            "title": title,
-            "html_text": result.html, 
-            "parsed_text": result.markdown
-        }
-        '''
+
     
 if __name__ == "__main__":
     test_url = "https://www.grammy.com/artists/lady-gaga/3611" 
