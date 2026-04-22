@@ -4,9 +4,8 @@ import os
 import re
 from urllib.parse import urlparse
 import tempfile
-from bs4 import BeautifulSoup
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
-import mistune
+
 
 def get_domain(url: str) -> str:   
     parsed = urlparse(url)
@@ -95,57 +94,3 @@ async def parser_academia(url: str, html_raw: str = None) -> dict:
     finally:
         if temp_html_path and os.path.exists(temp_html_path):
             os.remove(temp_html_path)   
-        
-    
-def remove_markdown(md: str) -> str:
-    if not md: return ""
-    html_str = mistune.html(md)
-    soup = BeautifulSoup(html_str, "html.parser")
-    for tag in soup.find_all(True):
-        tag.unwrap()
-    text = re.sub(r'[ \t]+', ' ', str(soup)) 
-    text = re.sub(r'\n+', '\n', text) 
-    return text.strip()
-
-async def aggiorna_gold_standard(filename):
-    if not os.path.exists(filename):
-        print(f"Errore: Il file {filename} non esiste.")
-        return
-    with open(filename, "r", encoding="utf-8") as f:
-        pagine_vecchie = json.load(f)
-
-    pagine_aggiornate = []
-    for entry in pagine_vecchie:
-        try:
-            # 1. Recuperiamo l'HTML GIA' SALVATO
-            html_salvato = entry.get('html_text')
-            
-            if not html_salvato:
-                print(f"Nessun HTML salvato trovato per {entry['url']}, salto...")
-                pagine_aggiornate.append(entry)
-                continue
-
-            # 2. Passiamo l'html_raw al parser così NON va su internet
-            res = await parser_academia(entry['url'], html_raw=html_salvato) 
-            
-            testo_gold_allineato = remove_markdown(res['parsed_text'])
-            nuova_entry = {
-                "url": entry['url'],
-                "domain": "www.academia.edu", # <-- METTI IL NOME ESATTO DEL DOMINIO QUI
-                "title": res['title'],
-                "html_text": res['html_text'], 
-                "gold_text": testo_gold_allineato 
-            }
-            pagine_aggiornate.append(nuova_entry)
-            print(f"OK: Aggiornato {entry['url']}")
-        except Exception as e:
-            print(f"Errore su {entry['url']}: {e}")
-            pagine_aggiornate.append(entry)
-
-    with open(filename, "w", encoding="utf-8") as f:
-        json.dump(pagine_aggiornate, f, indent=4, ensure_ascii=False)
-    print(f"Fatto! JSON aggiornato per {filename}.")
-
-
-if __name__ == "__main__":
-    asyncio.run(aggiorna_gold_standard("www.academia.edu_gs.json"))

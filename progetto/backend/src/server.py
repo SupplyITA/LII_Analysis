@@ -43,6 +43,9 @@ class ParseHtmlRequest(BaseModel):
     html_text: str
 
 def remove_markdown(md: str) -> str:
+    
+    if not md: return ""
+
     html = mistune.html(md)
     soup = BeautifulSoup(html, "html.parser")
     

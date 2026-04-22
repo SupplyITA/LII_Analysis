@@ -3,7 +3,8 @@ import re
 def get_tokens(text: str) -> set:
     if not text:
         return set()
-    return set(re.findall(r'\w+', text.lower()))
+    
+    return set(re.findall(r'[a-z0-9]+', text.lower()))
 
 def compute_token_level_eval(parsed_text: str, gold_text: str) -> dict:
     extracted_tokens = get_tokens(parsed_text)
