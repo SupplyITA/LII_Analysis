@@ -3,7 +3,10 @@ import json
 import os
 import re
 from urllib.parse import urlparse
+import tempfile
+from bs4 import BeautifulSoup
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
+import mistune
 
 def get_domain(url: str) -> str:   
     parsed = urlparse(url)
@@ -46,66 +49,103 @@ def clean_academia_markdown(md_text: str) -> str:
 
 
 async def parser_academia(url: str, html_raw: str = None) -> dict:
-    async with AsyncWebCrawler(config=BrowserConfig(headless=True)) as crawler:
-        
-        target = f"raw:{html_raw}" if html_raw else url
-        
-        result = await crawler.arun(url=target, config=CrawlerRunConfig(cache_mode=CacheMode.BYPASS))
 
-        if not result.success:
-            raise Exception(f"Crawl fallito: {result.error_message}")
+    browser_cfg = BrowserConfig(
+        headless=True,
+        extra_args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+    )
+    crawler_cfg = CrawlerRunConfig(
+        cache_mode=CacheMode.BYPASS,
+        css_selector="main", 
+        excluded_tags=['header', 'footer', 'nav', 'aside', 'script', 'style', 'form']
+    )
 
-        title = "Academia Paper"
-        title_match = re.search(r'<title>(.*?)</title>', result.html, re.IGNORECASE)
-        if title_match:
-            title = title_match.group(1).replace(" | Academia.edu", "").strip()
-            # Rimuove (PDF), (DOC) o (DOCX) all'inizio del titolo (case-insensitive)
-            title = re.sub(r'^\s*\((?:PDF|DOC|DOCX)\)\s*', '', title, flags=re.IGNORECASE).strip()
+    target_url = url
+    temp_html_path = None
 
-        return {
-            "url": url, 
-            "domain": get_domain(url), 
-            "title": title,
-            "html_text": result.html,
-            "parsed_text": clean_academia_markdown(result.markdown)
-        }
-        
+    if html_raw:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".html", mode="w", encoding="utf-8") as f:
+            f.write(html_raw)
+            temp_html_path = f.name
+        target_url = f"file://{temp_html_path}"
+
+    try:
+        async with AsyncWebCrawler(config=browser_cfg) as crawler:
+            
+            
+            result = await crawler.arun(url=target_url, config=crawler_cfg)
+
+            if not result.success:
+                raise Exception(f"Crawl fallito: {result.error_message}")
+
+            title = "Academia Paper"
+            title_match = re.search(r'<title>(.*?)</title>', result.html, re.IGNORECASE)
+            if title_match:
+                title = title_match.group(1).replace(" | Academia.edu", "").strip()
+                # Rimuove (PDF), (DOC) o (DOCX) all'inizio del titolo (case-insensitive)
+                title = re.sub(r'^\s*\((?:PDF|DOC|DOCX)\)\s*', '', title, flags=re.IGNORECASE).strip()
+
+            return {
+                "url": url, 
+                "domain": "www.academia.edu", 
+                "title": title,
+                "html_text": result.html,
+                "parsed_text": clean_academia_markdown(result.markdown)
+            }
+    finally:
+        if temp_html_path and os.path.exists(temp_html_path):
+            os.remove(temp_html_path)   
         
     
-if __name__ == "__main__":
+def remove_markdown(md: str) -> str:
+    if not md: return ""
+    html_str = mistune.html(md)
+    soup = BeautifulSoup(html_str, "html.parser")
+    for tag in soup.find_all(True):
+        tag.unwrap()
+    text = re.sub(r'[ \t]+', ' ', str(soup)) 
+    text = re.sub(r'\n+', '\n', text) 
+    return text.strip()
 
-    test_url = "https://www.academia.edu/37086183/Computer_Science_vs_Computer_Engineering?sm=b" 
-   
-    mio_gold_text_manuale = """As technology evolves and spins off into highly specialized fields, so do the careers and advanced degrees that support it. As these degrees and specialties increasingly narrow their areas of focus, it can be helpful to understand how they play into the larger technology landscape by breaking them down into two core curriculum: computer science and computer engineering. And while there's common ground between them, knowing where these two fields both overlap and diverge is a good place to start. THE THEORETICAL: COMPUTER SCIENCE Computer science is primarily concerned with computational theory, namely the architecture, data, algorithms, and programming languages that comprise the software that's run on a computer. Computer scientists are focused on things like code, algorithms, artificial intelligence, database design, and software design. Therefore, computer scientists are scientists and mathematicians who develop ways to process, interpret, store, communicate, and secure data. THE PRACTICAL: COMPUTER ENGINEERING Computer engineering takes that theory and applies to to real life. Essentially it's computer science put into action, married up with the field of electrical engineering. If computer science happens in code, in the abstract, computer engineering often happens in the lab. It involves designing and prototyping the tiny circuits and processing units that bridge the computer's hardware components with the software it's running—whether the implementations are embedded systems, microprocessors, networked IoT devices, or " smart " anything. Therefore, computer engineers are electrical engineers who specialize in software design, hardware design, or systems design that integrates both. WHERE BOTH ENDS MEET: SOFTWARE ENGINEERING You can't talk about computer science and computer engineering without touching on software engineering—the bridge between the two that provides the architecture for the instructions the hardware executes. A software engineer bridges both disciplines together, applying computer science theories to software. A software engineer gets even more hands-on with programming by translating those concepts into functional applications that leverage the hardware they run on.
-"""
-   
-    filename = "academia.edu_gs.json"
-   
-    try:
-        res = asyncio.run(parser_academia(test_url))
-        
-        nuova_entry = {
-            "url": res['url'],
-            "domain": res['domain'],
-            "title": res['title'],
-            "html_text": res['html_text'], 
-            "gold_text": mio_gold_text_manuale.strip()
-        }
+async def aggiorna_gold_standard(filename):
+    if not os.path.exists(filename):
+        print(f"Errore: Il file {filename} non esiste.")
+        return
+    with open(filename, "r", encoding="utf-8") as f:
+        pagine_vecchie = json.load(f)
 
-        if os.path.exists(filename):
-            with open(filename, "r", encoding="utf-8") as f:
-                try:
-                    dati_esistenti = json.load(f)
-                except json.JSONDecodeError:
-                    dati_esistenti = []
-        else:
-            dati_esistenti = []
-
-        dati_esistenti.append(nuova_entry)
-        with open(filename, "w", encoding="utf-8") as f:
-            json.dump(dati_esistenti, f, indent=4, ensure_ascii=False)
+    pagine_aggiornate = []
+    for entry in pagine_vecchie:
+        try:
+            # 1. Recuperiamo l'HTML GIA' SALVATO
+            html_salvato = entry.get('html_text')
             
-        print(f"SUCCESSO: Pagina aggiunta al file {filename}.")
+            if not html_salvato:
+                print(f"Nessun HTML salvato trovato per {entry['url']}, salto...")
+                pagine_aggiornate.append(entry)
+                continue
 
-    except Exception as e:
-        print(f"Errore durante il test: {e}")
+            # 2. Passiamo l'html_raw al parser così NON va su internet
+            res = await parser_academia(entry['url'], html_raw=html_salvato) 
+            
+            testo_gold_allineato = remove_markdown(res['parsed_text'])
+            nuova_entry = {
+                "url": entry['url'],
+                "domain": "www.academia.edu", # <-- METTI IL NOME ESATTO DEL DOMINIO QUI
+                "title": res['title'],
+                "html_text": res['html_text'], 
+                "gold_text": testo_gold_allineato 
+            }
+            pagine_aggiornate.append(nuova_entry)
+            print(f"OK: Aggiornato {entry['url']}")
+        except Exception as e:
+            print(f"Errore su {entry['url']}: {e}")
+            pagine_aggiornate.append(entry)
+
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(pagine_aggiornate, f, indent=4, ensure_ascii=False)
+    print(f"Fatto! JSON aggiornato per {filename}.")
+
+
+if __name__ == "__main__":
+    asyncio.run(aggiorna_gold_standard("www.academia.edu_gs.json"))

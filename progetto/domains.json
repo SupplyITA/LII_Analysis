@@ -1,10 +1,8 @@
 {
   "domains": [
   	"en.wikipedia.org",
-  	"www.reddit.com",
-  	"stackoverflow.com",
-  	"academia.edu",
+  	"www.academia.edu",
   	"grammy.com",
-  	"huddle.org"
+  	"www.huddle.org"
   	]
 }

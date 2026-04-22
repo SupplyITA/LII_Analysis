@@ -138,7 +138,9 @@ async def full_gs_eval(domain: str):
     for entry in gs_entries:
         try:
             url = entry["url"]
+
             parsed_data = await get_parsed_data(url)
+            
             if parsed_data:
                 raw_md = parsed_data.get("parsed_text", "")
                 clean_parsed_text = remove_markdown(raw_md)
