@@ -11,8 +11,6 @@ from bs4 import BeautifulSoup
 from src.logic.metrics import compute_token_level_eval
 from src.logic.gs_manager import load_domains, find_url_in_gs, load_full_domain_gs
 from src.logic.parser_wikipedia import parser_wikipedia
-from src.logic.parser_reddit import parser_reddit
-from src.logic.parser_stackoverflow import parser_stackoverflow
 from src.logic.parser_grammy import parser_grammy
 from src.logic.parser_huddle import parser_huddle
 from src.logic.parser_academia import parser_academia
@@ -61,10 +59,6 @@ async def get_parsed_data(url: str, html_text: str = None):
     
     if "wikipedia.org" in netloc:
         return await parser_wikipedia(url, html_raw=html_text)
-    elif "stackoverflow.com" in netloc:
-        return await parser_stackoverflow(url, html_raw=html_text)
-    elif "reddit.com" in netloc:
-        return await parser_reddit(url, html_raw=html_text)
     elif "huddle.org" in netloc:
         return await parser_huddle(url, html_raw=html_text)
     elif "grammy.com" in netloc:
@@ -146,10 +140,12 @@ async def full_gs_eval(domain: str):
             url = entry["url"]
             parsed_data = await get_parsed_data(url)
             if parsed_data:
-                clean_parsed_text = remove_markdown(parsed_data["parsed_text"])
+                raw_md = parsed_data.get("parsed_text", "")
+                clean_parsed_text = remove_markdown(raw_md)
                 metrics = compute_token_level_eval(clean_parsed_text, entry["gold_text"])
                 results.append(metrics)
-        except Exception:
+        except Exception as e:
+            print(f"Errore su {url}: {str(e)}")
             continue
 
     if not results:

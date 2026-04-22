@@ -7,21 +7,31 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 
 def get_domain(url: str) -> str:   
     parsed = urlparse(url)
-    return parsed.netloc.lower()
+    domain = parsed.netloc.lower()
+    if domain.startswith("www."):
+        domain = domain[4:]
+    return domain
 
 def clean_academia_markdown(md_text: str) -> str:
     """Pulisce il markdown usando solo RegEx e logica sulle stringhe."""
     if not md_text:
         return "Contenuto non individuato."
 
-    
     md_text = re.sub(r'!\[.*?\]\(.*?\)', '', md_text)
     
     md_text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', md_text)
 
+    md_text = re.sub(r'(?i)(\bread more\b|\bcontinue reading\b|\.\.\.more)', '', md_text)
+
     lines = md_text.split('\n')
     clean_lines = []
-    blacklist = ["download pdf", "related papers", "cookie policy", "privacy policy", "log in", "sign up", "loading preview"]
+    
+    blacklist = [
+        "download pdf", "related papers", "cookie policy", "privacy policy", 
+        "log in", "sign up", "loading preview", "save to library", 
+        "view full text", "skip to main content", "search academia", 
+        "terms of use", "academia.edu"
+    ]
     
     for line in lines:
         line_str = line.strip()
@@ -29,7 +39,7 @@ def clean_academia_markdown(md_text: str) -> str:
             continue
         if any(bad_word in line_str.lower() for bad_word in blacklist):
             continue
-        if len(line_str) > 50 or line_str.startswith('#'):
+        if len(line_str) > 0 or line_str.startswith('#'):
             clean_lines.append(line_str)
 
     return "\n\n".join(clean_lines)
@@ -49,6 +59,8 @@ async def parser_academia(url: str, html_raw: str = None) -> dict:
         title_match = re.search(r'<title>(.*?)</title>', result.html, re.IGNORECASE)
         if title_match:
             title = title_match.group(1).replace(" | Academia.edu", "").strip()
+            # Rimuove (PDF), (DOC) o (DOCX) all'inizio del titolo (case-insensitive)
+            title = re.sub(r'^\s*\((?:PDF|DOC|DOCX)\)\s*', '', title, flags=re.IGNORECASE).strip()
 
         return {
             "url": url, 
@@ -62,14 +74,9 @@ async def parser_academia(url: str, html_raw: str = None) -> dict:
     
 if __name__ == "__main__":
 
-    test_url = "https://www.academia.edu/32357079/Non_Timber_Forest_Produce_Utilization_Distribution_and_Status_in_the_Khangchendzonga_Biosphere_Reserve_Sikkim_India" 
+    test_url = "https://www.academia.edu/37086183/Computer_Science_vs_Computer_Engineering?sm=b" 
    
-    mio_gold_text_manuale = """ountains are important repository of valuable resources and provide services to one third of the humanity living in this planet. Sikkim Himalaya is endowed with wide variety of non-timber forest produce (NTFP). M The ethno-cultural fabrics of this tiny state are rich in traditional practices. As a result, the people living in the Khangchendzonga complex use these natural resources in various ways for their subsistence. The study recorded 94 odd numbers of NTFPs from the area. Above 50% of these species are marketed in the local Hats with a minimum price, which otherwise have good potential in local economy. About 10% of the total species distribution was found to be a concern for conservation. Some of the high value medicinal plants have potential for value addition as well as domestication. Therefore, a strategic plan is needed for conservation of these valuable resources and for sustainable development.
-The study documents 94 non-timber forest products (NTFPs) from the Khangchendzonga Biosphere Reserve.
-Over 50% of the recorded NTFPs are marketed, primarily wild edibles and medicinal herbs.
-Approximately 10% of NTFP species are conservation concerns, highlighting the need for strategic planning.
-Rural communities in Sikkim rely heavily on NTFPs for subsistence and economic stability.
-Training in NTFP cultivation and management is essential for sustainable development and biodiversity conservation.
+    mio_gold_text_manuale = """As technology evolves and spins off into highly specialized fields, so do the careers and advanced degrees that support it. As these degrees and specialties increasingly narrow their areas of focus, it can be helpful to understand how they play into the larger technology landscape by breaking them down into two core curriculum: computer science and computer engineering. And while there's common ground between them, knowing where these two fields both overlap and diverge is a good place to start. THE THEORETICAL: COMPUTER SCIENCE Computer science is primarily concerned with computational theory, namely the architecture, data, algorithms, and programming languages that comprise the software that's run on a computer. Computer scientists are focused on things like code, algorithms, artificial intelligence, database design, and software design. Therefore, computer scientists are scientists and mathematicians who develop ways to process, interpret, store, communicate, and secure data. THE PRACTICAL: COMPUTER ENGINEERING Computer engineering takes that theory and applies to to real life. Essentially it's computer science put into action, married up with the field of electrical engineering. If computer science happens in code, in the abstract, computer engineering often happens in the lab. It involves designing and prototyping the tiny circuits and processing units that bridge the computer's hardware components with the software it's running—whether the implementations are embedded systems, microprocessors, networked IoT devices, or " smart " anything. Therefore, computer engineers are electrical engineers who specialize in software design, hardware design, or systems design that integrates both. WHERE BOTH ENDS MEET: SOFTWARE ENGINEERING You can't talk about computer science and computer engineering without touching on software engineering—the bridge between the two that provides the architecture for the instructions the hardware executes. A software engineer bridges both disciplines together, applying computer science theories to software. A software engineer gets even more hands-on with programming by translating those concepts into functional applications that leverage the hardware they run on.
 """
    
     filename = "academia.edu_gs.json"

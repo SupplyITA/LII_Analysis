@@ -33,6 +33,7 @@ async def parser_wikipedia(url: str, html_raw: str = None) -> dict:
 
         title = result.metadata.get('title', 'No Title Found') if result.metadata else "No Title Found"
 
+        
         return {
             "url": url,
             "domain": get_domain(url),
