@@ -21,7 +21,7 @@ def get_domain(url: str) -> str:
     parsed = urlparse(url)
     return parsed.netloc.lower()
 
-async def parse_wikipedia(url: str, html_raw: str = None) -> dict:
+async def parser_wikipedia(url: str, html_raw: str = None) -> dict:
     browser_cfg = BrowserConfig(headless=True)
     
     # Solo tag HTML standard, per prevenire il crash 'Invalid expression'
@@ -72,7 +72,7 @@ async def aggiorna_gold_standard(filename):
     for entry in pagine_vecchie:
         print(f"Aggiornamento per: {entry['url']}...")
         try:
-            res = await parse_wikipedia(entry['url'])
+            res = await parser_wikipedia(entry['url'])
             # Rigenera il Gold Standard basandosi sul vero output
             testo_gold_allineato = remove_markdown(res['parsed_text'])
             
