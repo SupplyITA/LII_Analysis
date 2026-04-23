@@ -6,7 +6,7 @@ import html
 from urllib.parse import urlparse
 import tempfile
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
-
+import mistune
 
 def get_domain(url: str) -> str:   
     parsed = urlparse(url)
@@ -15,54 +15,51 @@ def get_domain(url: str) -> str:
         domain = domain[4:]
     return domain
 
+# LA FUNZIONE SENZA BEAUTIFULSOUP!
+def remove_markdown(md: str) -> str:
+    if not md: return ""
+    html_str = mistune.html(md)
+    # Rimuove blocchi style/script se ci sono
+    clean_str = re.sub(r'<(style|script)[^>]*>.*?</\1>', '', html_str, flags=re.IGNORECASE | re.DOTALL)
+    # Rimuove tutti i tag HTML rimanenti
+    text = re.sub(r'<[^>]+>', ' ', clean_str)
+    text = re.sub(r'[ \t]+', ' ', text) 
+    text = re.sub(r'\n+', '\n', text) 
+    return html.unescape(text).strip()
+
 def clean_academia_markdown(md_text: str) -> str:
-    """Pulisce il markdown usando solo RegEx e logica sulle stringhe."""
     if not md_text:
         return "Contenuto non individuato."
-
     md_text = re.sub(r'!\[.*?\]\(.*?\)', '', md_text)
-    
     md_text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', md_text)
-
     md_text = re.sub(r'(?i)(\bread more\b|\bcontinue reading\b|\.\.\.more)', '', md_text)
 
     lines = md_text.split('\n')
     clean_lines = []
-    
     blacklist = [
         "download pdf", "related papers", "cookie policy", "privacy policy", 
         "log in", "sign up", "loading preview", "save to library", 
         "view full text", "skip to main content", "search academia", 
         "terms of use", "academia.edu"
     ]
-    
     for line in lines:
         line_str = line.strip()
-        if not line_str:
-            continue
-        if any(bad_word in line_str.lower() for bad_word in blacklist):
-            continue
+        if not line_str: continue
+        if any(bad_word in line_str.lower() for bad_word in blacklist): continue
         if len(line_str) > 0 or line_str.startswith('#'):
             clean_lines.append(line_str)
-
     return "\n\n".join(clean_lines)
 
-
 async def parser_academia(url: str, html_raw: str = None) -> dict:
-    # 1. Configurazione Browser "Stealth" per non farsi bloccare
     browser_cfg = BrowserConfig(
         headless=True,
-        # Aggiungiamo un User-Agent credibile per non sembrare un bot
         headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
         extra_args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--disable-blink-features=AutomationControlled"]
     )
     
-    # 2. Configurazione Crawler: Diciamo di aspettare!
     crawler_cfg = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS,
-        # Academia carica i contenuti lentamente con Javascript. 
-        # Dobbiamo dirgli di aspettare un secondo prima di estrarre!
-        delay_before_return_html=2.0, 
+        delay_before_return_html=5.0, 
         excluded_tags=['header', 'footer', 'nav', 'aside', 'script', 'style', 'form', 'img', 'svg']
     )
 
@@ -82,7 +79,7 @@ async def parser_academia(url: str, html_raw: str = None) -> dict:
             if not result.success:
                 raise Exception(f"Crawl fallito: {result.error_message}")
 
-            # --- ESTRAZIONE TITOLO INDISTRUTTIBILE ---
+            # --- ESTRAZIONE TITOLO ---
             title = None
             og_match = re.search(r'<meta[^>]+property=["\']og:title["\'][^>]+content=["\'](.*?)["\']', result.html, re.IGNORECASE)
             if not og_match:
@@ -106,29 +103,47 @@ async def parser_academia(url: str, html_raw: str = None) -> dict:
             title = html.unescape(title).replace(" | Academia.edu", "").strip()
             title = re.sub(r'^\s*\((?:PDF|DOC|DOCX)\)\s*', '', title, flags=re.IGNORECASE).strip()
             title = re.sub(r'<[^>]+>', '', title).strip()
-            
             if not title: title = "Academia Paper"
 
-            # --- ESTRAZIONE TESTO CON SOCCORSO ---
-            md_text = result.markdown
-            
-            # Se Crawl4AI viene bloccato (Cloudflare) o restituisce vuoto, peschiamo a mano dall'HTML
-            if not md_text or len(md_text.strip()) < 50 or "Cloudflare" in md_text or "Please wait" in md_text:
-                abstract_match = re.search(r'class="[^"]*(?:abstract-text|p-about|work-show-full-text)[^"]*">(.*?)</div', result.html, re.IGNORECASE | re.DOTALL)
-                if abstract_match:
-                    raw_abstract = abstract_match.group(1)
-                    md_text = re.sub(r'<[^>]+>', '\n', raw_abstract)
-                    md_text = html.unescape(md_text)
-                else:
-                    # Piano C estremo: se non c'è la classe abstract, prova a pescare il primo blocco di testo lungo
-                    paragraphs = re.findall(r'<p[^>]*>(.*?)</p>', result.html, re.IGNORECASE | re.DOTALL)
-                    for p in paragraphs:
-                        clean_p = re.sub(r'<[^>]+>', '', p).strip()
-                        if len(clean_p) > 150: # Se un paragrafo è più lungo di 150 caratteri, è probabile sia l'abstract
-                            md_text = clean_p
-                            break
+            # --- ESTRAZIONE TESTO (TUTTO A COLpi DI REGEX) ---
+            parsed_text = ""
 
-            parsed_text = clean_academia_markdown(md_text)
+            abs_match = re.search(r'class="[^"]*(?:abstract|summary|description|full-text)[^"]*">(.*?)</div', result.html, re.IGNORECASE | re.DOTALL)
+            if abs_match:
+                raw_abs = abs_match.group(1)
+                
+                # 1. Ghigliottiniamo i tag <style> e <script> con tutto il loro contenuto
+                clean_html = re.sub(r'<(style|script)[^>]*>.*?</\1>', ' ', raw_abs, flags=re.IGNORECASE | re.DOTALL)
+                
+                # 2. Ora possiamo togliere gli altri tag HTML tranquillamente
+                parsed_text = re.sub(r'<[^>]+>', ' ', clean_html)
+                parsed_text = html.unescape(parsed_text)
+                
+                # 3. Rifiniamo le scorie
+                parsed_text = re.sub(r'^Abstract\s*', '', parsed_text, flags=re.IGNORECASE)
+                parsed_text = re.sub(r'(?i)(\.?\.\.?\s*read more\b|\bcontinue reading\b|\.\.\.more)', '', parsed_text).strip()
+
+            if len(parsed_text) < 50 and result.markdown:
+                md_text = result.markdown
+                if title and title != "Academia Paper":
+                    parti = md_text.split(title)
+                    if len(parti) > 1: md_text = parti[-1]
+                
+                spartiacque = ["Related Papers", "Download PDF", "Save to Library", "Citations", "Log In", "Cookie Policy", "Continue Reading"]
+                for parola in spartiacque:
+                    md_text = re.split(f'(?i){parola}', md_text)[0]
+                parsed_text = clean_academia_markdown(md_text) 
+
+            if len(parsed_text) < 50:
+                desc_match = re.search(r'<meta[^>]+(?:name|property)=["\'](?:og:description|twitter:description|description)["\'][^>]+content=["\'](.*?)["\']', result.html, re.IGNORECASE | re.DOTALL)
+                if not desc_match:
+                    desc_match = re.search(r'<meta[^>]+content=["\'](.*?)["\'][^>]+(?:name|property)=["\'](?:og:description|twitter:description|description)["\']', result.html, re.IGNORECASE | re.DOTALL)
+                if desc_match:
+                    parsed_text = html.unescape(desc_match.group(1)).strip()
+                if "Academia.edu is a platform for academics" in parsed_text:
+                    parsed_text = ""
+
+            parsed_text = re.sub(r'\s+', ' ', parsed_text).strip()
 
             return {
                 "url": url, 
@@ -140,74 +155,32 @@ async def parser_academia(url: str, html_raw: str = None) -> dict:
     finally:
         if temp_html_path and os.path.exists(temp_html_path):
             os.remove(temp_html_path)
-            
-async def aggiorna_gold_standard(nome_file: str):
-    # 1. Trova il file nella cartella gs_data
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    filename = os.path.abspath(os.path.join(current_dir, "..", "..", "..", "gs_data", nome_file))
-    
-    print(f"🔄 Lettura del file: {filename}")
-
-    # 2. Legge i dati esistenti
-    try:
-        with open(filename, "r", encoding="utf-8") as f:
-            gs_data = json.load(f)
-    except Exception as e:
-        print(f"❌ Errore: Non riesco a leggere il file {nome_file}. ({e})")
-        return
-
-    print(f"⚙️ Trovati {len(gs_data)} link. Avvio l'aggiornamento automatico...")
-
-    # 3. Cicla e aggiorna
-    for entry in gs_data:
-        print(f"   -> Aggiorno: {entry['url']}")
-        try:
-            # Usa il parser per scaricare i nuovi dati
-            res = await parser_academia(entry['url'])
-            
-            # Sovrascrive SOLO HTML e Titolo. Il gold_text rimane intatto!
-            entry['title'] = res['title']
-            entry['html_text'] = res['html_text']
-        except Exception as e:
-            print(f"   ❌ Fallito per {entry['url']}: {e}")
-
-    # 4. Salva il file sovrascrivendo i vecchi dati sporchi
-    with open(filename, "w", encoding="utf-8") as f:
-        json.dump(gs_data, f, indent=4, ensure_ascii=False)
-        
-    print("\n✅ LAVORO FINITO! Il file GS è stato aggiornato con successo.")
 
 if __name__ == "__main__":
-    import json
-    import os
-    import asyncio
-
-    async def force_100_percent():
+    async def debug_f1():
         current_dir = os.path.dirname(os.path.abspath(__file__))
         filename = os.path.abspath(os.path.join(current_dir, "..", "..", "..", "gs_data", "www.academia.edu_gs.json"))
         
-        print(f"🔄 Lettura del file: {filename}")
-
         with open(filename, "r", encoding="utf-8") as f:
             gs_data = json.load(f)
 
-        print(f"⚙️ Trovati {len(gs_data)} link. Applico l'allineamento automatico F1=1.000...")
-
-        for entry in gs_data:
-            print(f"   -> Allineo: {entry['url']}")
-            try:
-                res = await parser_academia(entry['url'])
-                
-                # TRUCCO SPORCO: Mettiamo come soluzione corretta ESATTAMENTE quello che il parser tira fuori
-                entry['gold_text'] = res['parsed_text']
-                entry['title'] = res['title']
-                entry['html_text'] = res['html_text']
-            except Exception as e:
-                print(f"   ❌ Fallito per {entry['url']}: {e}")
-
-        with open(filename, "w", encoding="utf-8") as f:
-            json.dump(gs_data, f, indent=4, ensure_ascii=False)
+        entry = gs_data[0]
+        print(f"\n🔍 ANALISI LINK: {entry['url']}")
+        
+        try:
+            res = await parser_academia(entry['url'])
+            print("\n" + "="*50)
+            print("🟡 IL TUO GOLD TEXT (Nel file JSON):")
+            print(entry.get('gold_text', 'Nessun gold text trovato'))
+            print("-" * 50)
+            print("🟢 TESTO ESTRATTO DAL PARSER (Quello che va a voto):")
+            print(res['parsed_text'])
+            print("="*50 + "\n")
             
-        print("\n✅ FATTO! Ora il Gold Text combacia al 100% col Parser. Puoi lanciare il grader!")
+            print(f"Lunghezza del tuo testo: {len(entry.get('gold_text', ''))} caratteri")
+            print(f"Lunghezza estratta dal parser: {len(res['parsed_text'])} caratteri")
+            
+        except Exception as e:
+            print(f"Errore: {e}")
 
-    asyncio.run(force_100_percent())  
+    asyncio.run(debug_f1())
