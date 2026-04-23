@@ -12,12 +12,13 @@ import mistune
 def remove_markdown(md: str) -> str:
     if not md: return ""
     html_str = mistune.html(md)
-    soup = BeautifulSoup(html_str, "html.parser")
-    for tag in soup.find_all(True):
-        tag.unwrap()
-    text = re.sub(r'[ \t]+', ' ', str(soup)) 
+    # Rimuove blocchi style/script se ci sono
+    clean_str = re.sub(r'<(style|script)[^>]*>.*?</\1>', '', html_str, flags=re.IGNORECASE | re.DOTALL)
+    # Rimuove tutti i tag HTML rimanenti
+    text = re.sub(r'<[^>]+>', ' ', clean_str)
+    text = re.sub(r'[ \t]+', ' ', text) 
     text = re.sub(r'\n+', '\n', text) 
-    return text.strip()
+    return html.unescape(text).strip()
 
 def get_domain(url: str) -> str:
     parsed = urlparse(url)
@@ -79,15 +80,6 @@ async def parser_huddle(url: str, html_raw: str = None) -> dict:
             
             md_text = result.markdown
             
-            # Sistema di fallback in caso di errore di Crawl4AI
-            if not md_text or "Crawl4AI Error" in md_text or "Invalid expression" in md_text:
-                soup = BeautifulSoup(result.html, "html.parser")
-                content = soup.find('article') or soup.find('body')
-                if content:
-                    # Qui possiamo usare le classi CSS per pulire manualmente!
-                    for tag in content.select('nav, footer, aside, script, style, .share-buttons, .stream-item, .post-meta'):
-                        tag.decompose()
-                    md_text = content.get_text(separator="\n\n", strip=True)
 
             if (title.lower() == "huddle" or "huddle" in title.lower()) and md_text:
                 h1_match = re.search(r'^#\s+(.*)', md_text, re.MULTILINE)
