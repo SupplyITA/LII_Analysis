@@ -43,16 +43,19 @@ class ParseHtmlRequest(BaseModel):
     html_text: str
 
 def remove_markdown(md: str) -> str:
+    import html
     
     if not md: return ""
 
-    html = mistune.html(md)
-    soup = BeautifulSoup(html, "html.parser")
+    html_str = mistune.html(md)
+    soup = BeautifulSoup(html_str, "html.parser")
     
     for tag in soup.find_all(True):
         tag.unwrap()
         
-    text = re.sub(r'[ \t]+', ' ', str(soup)) 
+    text = html.unescape(str(soup))#nuova
+        
+    text = re.sub(r'[ \t]+', ' ', text) 
     text = re.sub(r'\n+', '\n', text) 
     return text.strip()
 
