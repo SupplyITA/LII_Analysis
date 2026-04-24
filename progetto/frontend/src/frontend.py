@@ -7,7 +7,7 @@ import os
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-# URL del backend (nel container Docker useremo il nome del servizio)
+# URL del backend 
 BACKEND_URL = "http://backend:8003" 
 
 
@@ -26,8 +26,7 @@ async def index(request: Request):
     except Exception:
         all_gs_urls = []
 
-    return templates.TemplateResponse("index.html", {
-        "request": request, 
+    return templates.TemplateResponse(request, "index.html", {
         "gs_urls": all_gs_urls,
         "result": None
     })
@@ -49,8 +48,7 @@ async def process_url(request: Request, url: str = Form(...)):
     if parse_resp.status_code != 200:
         error_data = parse_resp.json()
         error_message = error_data.get("detail", "Errore durante il parsing dell'URL.")
-        return templates.TemplateResponse("index.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "index.html", {
             "gs_urls": all_gs_urls,
             "result": None,
             "error": error_message
@@ -70,8 +68,7 @@ async def process_url(request: Request, url: str = Form(...)):
         if eval_resp.status_code == 200:
             metrics = eval_resp.json().get("token_level_eval")
 
-    return templates.TemplateResponse("index.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "index.html", {
         "gs_urls": all_gs_urls,
         "result": {
             "url": url,
