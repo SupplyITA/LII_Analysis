@@ -27,7 +27,7 @@ class ParseResponse(BaseModel):
     parsed_text: str
 
 class TokenLevelEval(BaseModel):
-    """ Metrcihe per la valutazione """
+    """ Metriche per la valutazione """
     precision: float
     recall: float
     f1: float
