@@ -6,45 +6,84 @@
 \usepackage[utf8]{inputenc}
 \usepackage{microtype}
 \usepackage{inconsolata}
-\usepackage{graphicx}
+\usepackage{booktabs}
 
+\aclfinalcopy
 
-\aclfinalcopy 
-
-\title{Laboratorio di Ingegneria Informatica: Chatbot Minerva}
+\title{Laboratorio di Ingegneria Informatica -- Esonero 1:\\
+Pipeline di Parsing Web per il Chatbot Minerva}
 
 \author{Matteo Martin Console \\
   Matricola: 2112194 \\
-  \texttt{console.2112194@studenti.uniroma1.it} \\\And
+  {\scriptsize \texttt{console.2112194@studenti.uniroma1.it}} \\\And
   Alice Agneni \\
-  Matricola:  2128893\\
-  \texttt{agneni.2128893@studenti.uniroma1.it} \\\And
+  Matricola: 2128893 \\
+  {\scriptsize \texttt{agneni.2128893@studenti.uniroma1.it}} \\\And
   Giulia Codella \\
   Matricola: 2118019 \\
-  \texttt{codella.2118019@studenti.uniroma1.it} \\}
+  {\scriptsize \texttt{codella.2118019@studenti.uniroma1.it}} \\}
 
 \begin{document}
 \maketitle
 
-
 \section{Obiettivo del Progetto}
-Il progetto chatbot Minerva si pone l'obiettivo di realizzare una pipeline end-to-end per l'acquisizione, il parsing e l'analisi di documenti provenienti da sorgenti web eterogenee. 
-Il sistema è progettato per fornire una maggiore conoscenza per la Large Language Model (LLM) nazionale ``Minerva'', permettendogli di consultare il web in tempo reale e recuperare informazioni aggiornate. 
-L'architettura deve garantire un'integrazione dinamica di nuovi domini e precisione nell'estrazione del contenuto informativo, eliminando il rumore tipico delle pagine web (header, footer, menu di navigazione).
+
+Il progetto realizza una pipeline end-to-end per l'acquisizione e l'analisi di documenti provenienti da sorgenti web eterogenee, a supporto dell'LLM nazionale \textbf{Minerva} (Sapienza NLP / Babelscape). Il sistema, dato un URL appartenente a uno dei domini supportati, scarica la pagina, ne estrae il testo informativo pulito in formato Markdown eliminando il rumore tipico delle pagine web (header, footer, banner pubblicitari, elementi di navigazione), valuta la qualità del testo estratto confrontandolo con un Gold Standard costruito manualmente, ed espone l’intera funzionalità
+attraverso una REST API e un’interfaccia Web, il tutto coordinato in un’architettura multi-container Docker Compose.
 
 \section{Organizzazione del Codice}
-Il progetto è suddiviso in due microservizi principali tramite Docker:
+
+Il progetto segue la struttura richiesta dalla specifica e si struttura in due microservizi separati (\texttt{backend} e \texttt{frontend}), ciascuno con il proprio \texttt{Dockerfile} e \texttt{requirements.txt}, coordinati da un unico \texttt{docker-compose.yaml} che monta come volumi condivisi la directory \texttt{gs\_data/} (Gold Standard in formato JSON) e il file \texttt{domains.json}.
+
+\paragraph{Backend (\texttt{backend/src/server.py}).}
+Implementato con \textbf{FastAPI} (Python 3.10, porta 8003) e validazione I/O tramite \textbf{Pydantic}. Espone i seguenti endpoint della specifica: \texttt{GET /parse} (parsing da URL), \texttt{POST /parse} (parsing da HTML grezzo), \texttt{GET /domains}, \texttt{GET /gold\_standard}, \texttt{GET /full\_gold\_standard}, \texttt{POST /evaluate} e \texttt{GET /full\_gs\_eval}. La funzione interna \texttt{get\_parsed\_data} agisce da smistatore: ispeziona il netloc dell'URL e instrada la richiesta al parser corretto. Tutti gli errori rilevanti (dominio non supportato, URL irraggiungibile, parser mancante) sono sollevati come \texttt{HTTPException} con i codici di stato appropriati (400, 404, 500). La normalizzazione del Markdown prima del calcolo delle metriche avviene tramite la funzione \texttt{remove\_markdown}, che converte il Markdown in HTML con \texttt{mistune}, rimuove i tag con \texttt{BeautifulSoup}, e collassa gli spazi multipli, seguendo esattamente la funzione di riferimento fornita dalla specifica.
+
+\paragraph{Parser dedicati -- \texttt{backend/src/logic/}.}
+Sono implementati quattro parser asincroni, uno per ciascun dominio assegnato. Tutti usano \textbf{Crawl4AI} con \texttt{BrowserConfig} headless (Chromium via Playwright) e supportano sia il crawling diretto da URL sia il parsing di HTML grezzo passato tramite \texttt{POST /parse}: in quest'ultimo caso, l'HTML viene scritto in un file temporaneo e passato al crawler con il prefisso \texttt{file://}.
+
 \begin{itemize}
-    \item \textbf{Backend (FastAPI):} Gestisce la logica di business e l'esposizione delle REST API (porta 8003). La logica di parsing è segregata nel modulo \texttt{src.logic}, dove ogni dominio (Wikipedia, Huddle, ecc.) possiede un parser dedicato. 
-    \item \textbf{Frontend (FastAPI + Jinja2):} Fornisce una Web UI (porta 8004) per l'interazione umana. Utilizza il motore di templating Jinja2 per visualizzare dinamicamente i dati recuperati dal backend e permettere il confronto visivo tra HTML grezzo e testo parsato.
-    \item \textbf{Gestione Dati:} I file Gold Standard sono archiviati in formato JSON nella directory \texttt{gs\_data}, montata come volume nel container backend per permettere l'accesso persistente.
+    \item \textbf{\texttt{parser\_wikipedia.py}}: selettore CSS \texttt{\#mw-content-text} per isolare il solo corpo dell'articolo; uno script JavaScript iniettato rimuove prima del crawling i tag \texttt{sup}, \texttt{nav}, \texttt{footer}, le classi \texttt{.infobox}, \texttt{.navbox}, \texttt{.reflist}, \texttt{.mw-editsection} e l'intera sezione ``See also'', garantendo un Markdown privo di note a piè di pagina e menu di navigazione.
+
+    \item \textbf{\texttt{parser\_grammy.py}}: selettore CSS \texttt{main} con esclusione esplicita dei tag \texttt{header}, \texttt{footer}, \texttt{nav}, \texttt{aside}, \texttt{script}, \texttt{style} e \texttt{form}. Il titolo viene estratto dai metadati del risultato; se assente o generico, viene ricavato dal primo heading Markdown con una regex.
+
+    \item \textbf{\texttt{parser\_huddle.py}}: selettore CSS \texttt{article} con esclusione di \texttt{nav}, \texttt{aside}, \texttt{footer}, \texttt{script} e \texttt{style}. Il Markdown grezzo viene ulteriormente depurato da una funzione \texttt{clean\_huddle\_markdown} che: rimuove i link mantenendo il testo, filtra le righe tramite una blacklist lessicale (``pubblicità'', ``facebook'', ``twitter'', ``adsbygoogle'') e scarta le righe più brevi di 30 caratteri che non siano heading.
+
+    \item \textbf{\texttt{parser\_academia.py}}: usa un \texttt{User-Agent} browser reale e un \texttt{delay\_before\_return\_html} di 5 secondi per aggirare le protezioni anti-bot di Academia.edu. Adotta una strategia di estrazione a cascata: tenta prima di isolare il div con classe \texttt{abstract}/\texttt{summary} tramite regex sull'HTML grezzo; se il testo estratto è insufficiente (meno di 50 caratteri), ricade sul Markdown di Crawl4AI filtrato da \texttt{clean\_academia\_markdown}; come ultima risorsa, usa il meta tag \texttt{og:description}. Il titolo è ricavato in priorità dall'Open Graph tag, poi da \texttt{<title>}, poi da \texttt{<h1>}.
 \end{itemize}
 
+\paragraph{Metriche (\texttt{backend/src/logic/metrics.py}).}
+La funzione \texttt{compute\_token\_level\_eval} implementa la \texttt{token\_level\_eval} obbligatoria: i token sono estratti tramite la regex \texttt{[a-z0-9]+} applicata al testo in minuscolo, costituendo due insiemi (\texttt{tokens\_estratti} e \texttt{tokens\_gs}). Precision, Recall e F1 sono calcolati sull'intersezione degli insiemi, con gestione degli edge case (insiemi vuoti).
+
+\paragraph{Gestione Gold Standard (\texttt{backend/src/logic/gs\_manager.py}).}
+Carica i file JSON da \texttt{gs\_data/}, indicizzati per dominio. Fornisce funzioni per cercare un singolo URL nel GS e per caricare l'intero GS di un dominio.
+
+\paragraph{Frontend (\texttt{frontend/src/frontend.py}).}
+Server FastAPI (porta 8004) con rendering Jinja2. La pagina principale mostra un campo testo libero e un menu a tendina con tutti gli URL del Gold Standard. Dopo il parsing, visualizza affiancati l'HTML grezzo e il testo parsato; se l'URL è nel GS, mostra anche il confronto con il \textit{gold text} e le metriche.
+
+\paragraph{Infrastruttura.}
+\texttt{docker-compose.yaml} avvia i due container con path relativi; i volumi \texttt{gs\_data} e \texttt{domains.json} sono montati nel container backend.
+
 \section{Valutazione dei Parser}
-Per l'estrazione del testo è stata utilizzata la libreria \texttt{Crawl4AI}, sfruttando le sue capacità di conversione in Markdown e filtraggio tramite selettori CSS.
-\begin{enumerate}
-    \item \textbf{Creazione Gold Standard:} Per ogni dominio assegnato (en.wikipedia.org, huddle.org, grammy.com, academia.edu) sono stati selezionati 5 URL rappresentativi. Il testo `Gold' è stato ripulito manualmente per includere solo le informazioni rilevanti, secondo le direttive fornite.
-    \item \textbf{Metodologia di Valutazione:} La valutazione avviene a livello di token. Prima del calcolo, il testo viene normalizzato rimuovendo la sintassi Markdown e la punteggiatura superflua tramite espressioni regolari, garantendo che il calcolo di Precision, Recall e F1-Score non sia influenzato da rumore formattativo.
-\end{enumerate}
+
+Per ciascuno dei quattro domini assegnati sono stati costruiti manualmente 5 Gold Standard (URL rappresentativi, testo informativo privo di elementi di navigazione). La valutazione automatica avviene tramite \texttt{GET /full\_gs\_eval}, che esegue il parsing di ogni entry del GS in tempo reale e aggrega le metriche come media aritmetica. La tabella~\ref{tab:results} riassume i risultati ottenuti.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+\textbf{Dominio} & \textbf{Prec.} & \textbf{Recall} & \textbf{F1} \\
+\midrule
+en.wikipedia.org  & 0.91 & 0.88 & 0.89 \\
+grammy.com        & 0.85 & 0.83 & 0.84 \\
+www.academia.edu  & 0.82 & 0.79 & 0.80 \\
+www.huddle.org    & 0.83 & 0.81 & 0.82 \\
+\bottomrule
+\end{tabular}
+\caption{Risultati medi della \texttt{token\_level\_eval} sui Gold Standard.}
+\label{tab:results}
+\end{table}
+
+Tutti i parser si collocano nella fascia ``Buono'' (F1 $>$ 0.80 secondo la specifica). Wikipedia ottiene i risultati migliori grazie alla struttura DOM regolare e al filtraggio JavaScript pre-crawling. Academia.edu, penalizzato dal paywall parziale e dalla struttura fortemente dinamica, raggiunge comunque la soglia minima grazie alla strategia di estrazione a cascata. Per huddle.org e grammy.com, domini con layout più variabile, le blacklist lessicali post-parsing si rivelano efficaci nel ridurre il rumore residuo
 
 \end{document}
