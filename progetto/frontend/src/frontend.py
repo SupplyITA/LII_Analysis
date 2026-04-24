@@ -10,6 +10,7 @@ templates = Jinja2Templates(directory="templates")
 # URL del backend (nel container Docker useremo il nome del servizio)
 BACKEND_URL = "http://backend:8003" 
 
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     # Recupera i domini e gli URL del Gold Standard per il menu a tendina
