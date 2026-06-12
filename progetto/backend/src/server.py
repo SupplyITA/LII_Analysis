@@ -137,7 +137,7 @@ async def parse(url: str, db: Session = Depends(get_db)):
 '''
 
 @app.post("/parse", response_model=ParseResponse)
-async def parse_post(request: ParseHtmlRequest, db: Session = Depends(get_db)):    
+async def parse(request: ParseRequest, db: Session = Depends(get_db)):    
     """ Esegue il parser su un testo HTML fornito e lo SALVA NEL DATABASE """
     # verifica se il dominio è supportato
     supported_domains = load_domains()
@@ -188,23 +188,17 @@ def get_gold_standard(url: str, db: Session = Depends(get_db)):
         "gold_text": gs_entry.gold_text
     }
 
-@app.get("/full_gold_standard")
-def get_full_gold_standard(domain: str, db: Session = Depends(get_db)):
-    """ Interroga il DATABASE per la lista degli elementi GS di un dominio """
-    gs_entries = db.query(GoldStandard).join(WebResource).filter(WebResource.domain == domain).all()
-    
-    if not gs_entries:
-        raise HTTPException(status_code=404, detail="Dominio non supportato o GS mancante nel Database")
-    
-    risultati = []
-    for entry in gs_entries:
-        risultati.append({
-            "url": entry.url,
-            "domain": domain,
-            "gold_text": entry.gold_text
-        })
-    return {"gold_standard": risultati}
+@app.get("/gold_standard_urls")
+def get_gold_standard_urls(domain:str, db: Session = Depends(get_db)):
+    """ Restituisce la lista di tutti gli URL presenti nel GS per un dominio """
 
+    # join tra gs e webresource per filtrare un dominio
+    urls = db.query(GoldStandard.url).join(WebResource).filter(WebResource.domain == domain).all()
+    if not urls:
+        raise HTTPException(status_code=404, detail="Dominio non supportato o GS mancante nel Database")
+
+    urls_list = [u[0] for u in urls]
+    return {"gold_standard_urls": urls_list}
 
 @app.post("/evaluate", response_model=EvaluationResponse)
 def evaluate(request: EvaluateRequest):
@@ -290,7 +284,7 @@ def get_db_schema():
     }
 
 @app.get("/status")
-def get_status():
+def get_status(db: Session = Depends(get_db)):
     """ Verifica stato di backend, DB e Ollama """
 
     status = {
@@ -299,9 +293,13 @@ def get_status():
         "ollama": "ok",        
     }
 
+    # controllo db
     try:
-        db.execute("SELECT 1")  # prova di connessione
+        db.execute("SELECT 1")  
     except:
         status["database"] = "error"
+
+    # controllo ollama
+    # da completare !!!
 
     return status
