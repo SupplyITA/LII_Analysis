@@ -4,3 +4,5 @@ pydantic
 crawl4ai
 mistune
 beautifulsoup4
+mariadb
+sqlalchemy

@@ -2,6 +2,7 @@ import os
 import html
 import re
 import tempfile
+import asyncio
 from urllib.parse import urlparse
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 
@@ -17,11 +18,24 @@ async def parser_grammy(url: str, html_raw: str = None) -> dict:
     """       
     browser_cfg = BrowserConfig(headless=True, extra_args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"])
         
+    # SCRIPT JS: Rimuove gli articoli successivi al primo e le sezioni di disturbo
+    js_kill_infinite_scroll = """
+    let articles = document.querySelectorAll('article');
+    if (articles.length > 1) {
+        for (let i = 1; i < articles.length; i++) {
+            articles[i].remove();
+        }
+    }
+    document.querySelectorAll('.read-more, .related-articles, .infinite-scroll').forEach(el => el.remove());
+    """
+
     # configurazione del crawler
     crawler_cfg = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS,
         css_selector="main", 
-        excluded_tags=['header', 'footer', 'nav', 'aside', 'script', 'style', 'form']
+        excluded_tags=['header', 'footer', 'nav', 'aside', 'script', 'style', 'form'],
+        js_code=js_kill_infinite_scroll
+        # RIMOSSO: wait_for="domcontentloaded" che causava il blocco dei 60 secondi
     )
     
     target_url = url
@@ -66,3 +80,16 @@ async def parser_grammy(url: str, html_raw: str = None) -> dict:
     finally:
         if temp_html_path and os.path.exists(temp_html_path):
             os.remove(temp_html_path)
+
+# ==========================================
+# TEST VISIVO VELOCE
+# ==========================================
+if __name__ == "__main__":
+    async def test_veloce():
+        test_url = "https://www.grammy.com/news/heavy-metal-music-latin-america-history/" 
+        print(f"Test in corso su: {test_url}")
+        res = await parser_grammy(test_url)
+        print("\n--- TESTO PARSATO ---")
+        print(res['parsed_text'])
+
+    asyncio.run(test_veloce())

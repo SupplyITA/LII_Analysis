@@ -3,21 +3,33 @@ import os
 import re
 from urllib.parse import urlparse
 from pydantic import BaseModel
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from typing import List, Dict, Optional
 import mistune
 import html
 from bs4 import BeautifulSoup
+from contextlib import asynccontextmanager
+from sqlalchemy.orm import Session
+from src.database import get_db
+from src.models import WebResource, GoldStandard
+from src.init_db import init_db
 
 from src.logic.metrics import compute_token_level_eval
-from src.logic.gs_manager import load_domains, find_url_in_gs, load_full_domain_gs
+from src.logic.gs_manager import load_domains 
 from src.logic.parser_wikipedia import parser_wikipedia
 from src.logic.parser_grammy import parser_grammy
 from src.logic.parser_huddle import parser_huddle
 from src.logic.parser_academia import parser_academia
 
-app = FastAPI()
+# ---------------gestione avvio server(lifespan) ---------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
 
+app = FastAPI(lifespan=lifespan)
+
+# --------------- schemi pydantic ---------------
 class ParseResponse(BaseModel):
     """ Schema di risposta per l'operazione di parsing """
     url: str
@@ -57,9 +69,7 @@ def remove_markdown(md: str) -> str:
     
     for tag in soup.find_all(True):
         tag.unwrap()
-        
-    text = html.unescape(str(soup))#nuova
-        
+    text = html.unescape(str(soup))
     text = re.sub(r'[ \t]+', ' ', text) 
     text = re.sub(r'\n+', '\n', text) 
     return text.strip()
@@ -89,9 +99,9 @@ def get_domains():
     """ Restituisce la lista dei domini supportati """
     return {"domains": load_domains()}
 
-@app.get("/parse", response_model = ParseResponse)
-async def parse(url: str):
-    """ Scarica un URL e ne estrae il contenuto pulito """
+@app.get("/parse", response_model=ParseResponse)
+async def parse(url: str, db: Session = Depends(get_db)):
+    """ Scarica un URL, lo parsa e lo SALVA NEL DATABASE """
     supported_domains = load_domains()
     if not any(d in url for d in supported_domains):
         raise HTTPException(status_code=400, detail="Dominio non supportato")
@@ -100,13 +110,26 @@ async def parse(url: str):
         result = await get_parsed_data(url)
         if not result:
             raise HTTPException(status_code=400, detail="Parser specifico non trovato")
+        
+        #salviamo l'HTML e i metadati nel database se non esistono già
+        existing = db.query(WebResource).filter(WebResource.url == url).first()
+        if not existing:
+            nuova_risorsa = WebResource(
+                url=result["url"],
+                domain=result["domain"],
+                title=result["title"],
+                html_text=result["html_text"]
+            )
+            db.add(nuova_risorsa)
+            db.commit()
+
         return result
     except Exception as e:
-        raise HTTPException(status_code=404, detail=f"URL irraggiungibile o errore di parsing: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"URL irraggiungibile o errore: {str(e)}")
     
 @app.post("/parse", response_model=ParseResponse)
-async def parse_post(request: ParseHtmlRequest):
-    """ Esegue il parser su un testo HTML fornito direttamente """
+async def parse_post(request: ParseHtmlRequest, db: Session = Depends(get_db)):
+    """ Esegue il parser su un testo HTML fornito e lo SALVA NEL DATABASE """
     supported_domains = load_domains()
     if not any(d in request.url for d in supported_domains):
         raise HTTPException(status_code=400, detail="Dominio non supportato")
@@ -114,29 +137,53 @@ async def parse_post(request: ParseHtmlRequest):
         result = await get_parsed_data(request.url, html_text=request.html_text)
         if not result:
             raise HTTPException(status_code=400, detail="Parser specifico non trovato")
+        
+        existing = db.query(WebResource).filter(WebResource.url == request.url).first()
+        if not existing:
+            nuova_risorsa = WebResource(
+                url=result["url"],
+                domain=result["domain"],
+                title=result["title"],
+                html_text=result["html_text"]
+            )
+            db.add(nuova_risorsa)
+            db.commit()
+
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Errore di parsing sull'HTML fornito: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Errore di parsing HTML: {str(e)}")
 
 
 @app.get("/gold_standard")
-def get_gold_standard(url: str): 
-    """ Restituisce il gold standard di un documento per l'url dato in input """
-    entry = find_url_in_gs(url)
-
-    if not entry:
-        raise HTTPException(status_code=404, detail="URL non trovato nel GS")
-    return entry
+def get_gold_standard(url: str, db: Session = Depends(get_db)): 
+    """ Interroga il DATABASE per ottenere il gold standard di un url """
+    gs_entry = db.query(GoldStandard).filter(GoldStandard.url == url).first()
+    if not gs_entry:
+        raise HTTPException(status_code=404, detail="URL non trovato nel Database GS")
+    
+    return {
+        "url": gs_entry.url,
+        "domain": gs_entry.web_resource.domain if gs_entry.web_resource else "Sconosciuto",
+        "gold_text": gs_entry.gold_text
+    }
 
 @app.get("/full_gold_standard")
-def get_full_gold_standard(domain: str):
-    """ Restituisce la lista degli elementi di un gold standard per il dominio dato in input """
-    gs_data = load_full_domain_gs(domain)
+def get_full_gold_standard(domain: str, db: Session = Depends(get_db)):
+    """ Interroga il DATABASE per la lista degli elementi GS di un dominio """
+    gs_entries = db.query(GoldStandard).join(WebResource).filter(WebResource.domain == domain).all()
     
-    if gs_data is None:
-        raise HTTPException(status_code = 404, detail = "Dominio non supportat o GS mancante")
+    if not gs_entries:
+        raise HTTPException(status_code=404, detail="Dominio non supportato o GS mancante nel Database")
     
-    return {"gold_standard": gs_data}
+    risultati = []
+    for entry in gs_entries:
+        risultati.append({
+            "url": entry.url,
+            "domain": domain,
+            "gold_text": entry.gold_text
+        })
+    return {"gold_standard": risultati}
+
 
 @app.post("/evaluate", response_model=EvaluationResponse)
 def evaluate(request: EvaluateRequest):
@@ -145,28 +192,26 @@ def evaluate(request: EvaluateRequest):
     metrics = compute_token_level_eval(clean_parsed_text, request.gold_text)
     return {"token_level_eval": metrics}
 
+
 @app.get("/full_gs_eval", response_model=EvaluationResponse)
-async def full_gs_eval(domain: str):
-    """ Restituisce la valutazione complessiva del gold standard per il dominio dato in input"""
-    gs_entries = load_full_domain_gs(domain)
+async def full_gs_eval(domain: str, db: Session = Depends(get_db)):
+    """ Valutazione complessiva leggendo dal DATABASE """
+    gs_entries = db.query(GoldStandard).join(WebResource).filter(WebResource.domain == domain).all()
     
     if not gs_entries:
-        raise HTTPException(status_code=404, detail="Dominio non trovato")
+        raise HTTPException(status_code=404, detail="Dominio non trovato nel DB")
     
     results = []
     for entry in gs_entries:
         try:
-            url = entry["url"]
-
-            parsed_data = await get_parsed_data(url)
-            
+            parsed_data = await get_parsed_data(entry.url)
             if parsed_data:
                 raw_md = parsed_data.get("parsed_text", "")
                 clean_parsed_text = remove_markdown(raw_md)
-                metrics = compute_token_level_eval(clean_parsed_text, entry["gold_text"])
+                metrics = compute_token_level_eval(clean_parsed_text, entry.gold_text)
                 results.append(metrics)
         except Exception as e:
-            print(f"Errore su {url}: {str(e)}")
+            print(f"Errore su {entry.url}: {str(e)}")
             continue
 
     if not results:
