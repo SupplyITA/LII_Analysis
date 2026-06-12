@@ -1,15 +1,14 @@
-import json
-import os
-import re
+import json, os, re, html
 from urllib.parse import urlparse
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, Depends
 from typing import List, Dict, Optional
 import mistune
-import html
 from bs4 import BeautifulSoup
 from contextlib import asynccontextmanager
 from sqlalchemy.orm import Session
+from sqlalchemy import func
+
 from src.database import get_db
 from src.models import WebResource, GoldStandard
 from src.init_db import init_db
@@ -21,9 +20,10 @@ from src.logic.parser_grammy import parser_grammy
 from src.logic.parser_huddle import parser_huddle
 from src.logic.parser_academia import parser_academia
 
-# ---------------gestione avvio server(lifespan) ---------------
+# ---------------gestione avvio server (lifespan) ---------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """ Esegue operazioni di inizializzazione all'avvio del server """
     init_db()
     yield
 
@@ -38,6 +38,12 @@ class ParseResponse(BaseModel):
     html_text: str
     parsed_text: str
 
+class ParseRequest(BaseModel): # al posto di parsehtmlrequest !!!!!
+    """ Input per POST/parse """
+    url: str
+    html_text: Optional[str] = None # invio manuale HTML
+    local: Optional[bool] = False   # se true usa il DB
+
 class TokenLevelEval(BaseModel):
     """ Metriche per la valutazione """
     precision: float
@@ -47,17 +53,18 @@ class TokenLevelEval(BaseModel):
 class EvaluationResponse(BaseModel):
     """ Schema di risposta finale per la valutazione """
     token_level_eval: TokenLevelEval
+    judge_score: Optional[float] = None
     x_eval: Optional[Dict] = {} 
 
 class EvaluateRequest(BaseModel):
     """ Input richiesto per endpoint di valutazione """
     parsed_text : str
     gold_text: str
-
-class ParseHtmlRequest(BaseModel):
-    """ Richiesta per parsing da HTML diretto """
-    url: str
-    html_text: str
+    
+class JudgeResponse(BaseModel):
+    model_name: str
+    judge_score: int
+    judge_feedback: str
 
 # ---------------------------- Funzioni di supporto ----------------------------
 def remove_markdown(md: str) -> str:
@@ -99,6 +106,7 @@ def get_domains():
     """ Restituisce la lista dei domini supportati """
     return {"domains": load_domains()}
 
+''' non serve più !!!!!!!!!!!!! vuole solo post credo
 @app.get("/parse", response_model=ParseResponse)
 async def parse(url: str, db: Session = Depends(get_db)):
     """ Scarica un URL, lo parsa e lo SALVA NEL DATABASE """
@@ -126,33 +134,46 @@ async def parse(url: str, db: Session = Depends(get_db)):
         return result
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"URL irraggiungibile o errore: {str(e)}")
-    
+'''
+
 @app.post("/parse", response_model=ParseResponse)
-async def parse_post(request: ParseHtmlRequest, db: Session = Depends(get_db)):
+async def parse_post(request: ParseHtmlRequest, db: Session = Depends(get_db)):    
     """ Esegue il parser su un testo HTML fornito e lo SALVA NEL DATABASE """
+    # verifica se il dominio è supportato
     supported_domains = load_domains()
     if not any(d in request.url for d in supported_domains):
         raise HTTPException(status_code=400, detail="Dominio non supportato")
+
+    # gestione modalità local
+    html_to_use = request.html_text
+    
+    if request.local:
+        db_res = db.query(WebResource).filter(WebResource.url == request.url).first()
+        if not db_res:
+            raise HTTPException(status_code=404, detail="URL non presente nel database, impossibile parsing locale")
+        html_to_use = db_res.html_text
+
+    # parsing
     try:
-        result = await get_parsed_data(request.url, html_text=request.html_text)
+        result = await get_parsed_data(request.url, html_text=html_to_use)
         if not result:
             raise HTTPException(status_code=400, detail="Parser specifico non trovato")
         
-        existing = db.query(WebResource).filter(WebResource.url == request.url).first()
-        if not existing:
-            nuova_risorsa = WebResource(
+        # salvataggio se risorsa nuova e non locale
+        if not request.local:
+            existing = db.query(WebResource).filter(WebResource.url == request.url).first()    
+            if not existing:
+                nuova_risorsa = WebResource(
                 url=result["url"],
                 domain=result["domain"],
                 title=result["title"],
                 html_text=result["html_text"]
-            )
-            db.add(nuova_risorsa)
-            db.commit()
-
-        return result
+                )
+                db.add(nuova_risorsa)
+                db.commit()
+        return result                
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Errore di parsing HTML: {str(e)}")
-
 
 @app.get("/gold_standard")
 def get_gold_standard(url: str, db: Session = Depends(get_db)): 
@@ -229,3 +250,58 @@ async def full_gs_eval(domain: str, db: Session = Depends(get_db)):
             "f1": round(avg_f1, 4)
         }
     }
+
+@app.post("/evaluate_judge", response_model=JudgeResponse)
+async def evaluate_judge(request: EvaluateRequest):
+    """ Invia il testo a Ollama per una valutazione """
+    pass
+
+@app.get("/db_stats")
+def get_db_stats(db: Session = Depends(get_db)):
+    """ Restituisce conteggi per dominio """
+
+    # conta quante pagine ci sono per ogni dominio
+    stats = db.query(WebResource.domain, func.count(WebResource.url)).group_by(WebResource.domain).all()
+    domain_counts = {d: c for d, c in stats} # dizionario del tipo { dominio: conteggio pagine }
+
+    return {
+        "web_resources": domain_counts,
+        "gold_standard": domain_counts,
+        "avg_eval": {},     # medie voti
+        "avg_eval_judge": {}    # medie voti dati da Ollama
+    }
+
+@app.get("/db_schema")
+def get_db_schema():
+    """ Restituisce la decsrizione tecnica delle tabelle """
+    return {
+        "web_resources": {
+            "url": "varchar(2048), PK",
+            "domain": "varchar(255)",
+            "title": "varchar(2048)",
+            "html_text": "longtext",
+            "created_at": "datetime"
+        },
+        "gold_standard": {
+            "url": "varchar(2048), PK, FK(web_resources.url)",
+            "gold_text": "longtext",
+            "created_at": "datetime"
+        }
+    }
+
+@app.get("/status")
+def get_status():
+    """ Verifica stato di backend, DB e Ollama """
+
+    status = {
+        "backend": "ok",
+        "database": "ok",
+        "ollama": "ok",        
+    }
+
+    try:
+        db.execute("SELECT 1")  # prova di connessione
+    except:
+        status["database"] = "error"
+
+    return status
