@@ -106,39 +106,10 @@ def get_domains():
     """ Restituisce la lista dei domini supportati """
     return {"domains": load_domains()}
 
-''' non serve più !!!!!!!!!!!!! vuole solo post credo
-@app.get("/parse", response_model=ParseResponse)
-async def parse(url: str, db: Session = Depends(get_db)):
-    """ Scarica un URL, lo parsa e lo SALVA NEL DATABASE """
-    supported_domains = load_domains()
-    if not any(d in url for d in supported_domains):
-        raise HTTPException(status_code=400, detail="Dominio non supportato")
-
-    try:
-        result = await get_parsed_data(url)
-        if not result:
-            raise HTTPException(status_code=400, detail="Parser specifico non trovato")
-        
-        #salviamo l'HTML e i metadati nel database se non esistono già
-        existing = db.query(WebResource).filter(WebResource.url == url).first()
-        if not existing:
-            nuova_risorsa = WebResource(
-                url=result["url"],
-                domain=result["domain"],
-                title=result["title"],
-                html_text=result["html_text"]
-            )
-            db.add(nuova_risorsa)
-            db.commit()
-
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"URL irraggiungibile o errore: {str(e)}")
-'''
-
 @app.post("/parse", response_model=ParseResponse)
 async def parse(request: ParseRequest, db: Session = Depends(get_db)):    
     """ Esegue il parser su un testo HTML fornito e lo SALVA NEL DATABASE """
+    
     # verifica se il dominio è supportato
     supported_domains = load_domains()
     if not any(d in request.url for d in supported_domains):
@@ -219,6 +190,7 @@ async def full_gs_eval(domain: str, db: Session = Depends(get_db)):
     results = []
     for entry in gs_entries:
         try:
+            # usa html del db
             parsed_data = await get_parsed_data(entry.url, html_text=entry.web_resource.html_text)
             if parsed_data:
                 raw_md = parsed_data.get("parsed_text", "")
@@ -247,7 +219,7 @@ async def full_gs_eval(domain: str, db: Session = Depends(get_db)):
 
 @app.post("/evaluate_judge", response_model=JudgeResponse)
 async def evaluate_judge(request: EvaluateRequest):
-    """ Invia il testo a Ollama per una valutazione """
+    """ Invia il testo a Ollama per una valutazione """    
     pass
 
 @app.get("/db_stats")
@@ -300,7 +272,11 @@ def get_status(db: Session = Depends(get_db)):
         status["database"] = "error"
 
     # controllo ollama
-    # da completare !!!
+    try:
+        r = requests.get("http://ollama:11434/api/tags", timeout=2)
+        if r.status_code != 200: status["ollama"] = "error"
+    except:
+        status["ollama"] = "error"
 
     return status
 
@@ -316,10 +292,14 @@ def add_web_resource(request: ParseRequest, db: Session = Depends(get_db)):
             "message": "URL già presente"
         }
     
+    title = "Manuale"
+    match = re.search(r'<title>(.*?)</title>', request.html_text, re.IGNORECASE)
+    if match: title = match.group(1).strip()
+
     nuova = WebResource(
         url = request.url,
         domain = urlparse(request.url).netloc.lower(),
-        title = "Inserito manualmente",
+        title = title,
         html_text = request.html_text
     )
     db.add(nuova)
@@ -343,10 +323,24 @@ def add_gold_standard(request: EvaluateRequest, url: str, db: Session = Depends(
     db.commit()
     return { "status": "ok" }
 
-@app.delete("/delete_web_resource")
+@app.delete("/web_resource")
 def delete_web_resource(url: str, db: Session = Depends(get_db)):
     """ Rimuove una risorsa web dalla tabella web_resources e a cascata con FK, il gold_standard associato """
+    res = db.query(WebResource).filter(WebResource.url == url).first()
+    if not res:
+        raise HTTPException(status_code=404, detail="Risorsa non trovata")
+    
+    db.delete(res)
+    db.commit()
+    return {"status": "ok"}
 
-@app.delete("/delete_gold_standard")
+@app.delete("/gold_standard")
 def delete_gold_standard(url: str, db: Session = Depends(get_db)):
     """ Rimuove solo l'entry dalla tabella gold_standard, lasciando intatta la web_resource associata """
+    gs = db.query(GoldStandard).filter(GoldStandard.url == url).first()
+    if not gs:
+        raise HTTPException(status_code=404, detail="Gold Standard non trovato")
+    
+    db.delete(gs)
+    db.commit()
+    return {"status": "ok"}

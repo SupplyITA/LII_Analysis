@@ -6,3 +6,5 @@ mistune
 beautifulsoup4
 mariadb
 sqlalchemy
+httpx
+requests
