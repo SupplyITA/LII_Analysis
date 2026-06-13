@@ -1,7 +1,7 @@
 import httpx
 
 OLLAMA_URL = "http://ollama:11434/api/generate"
-MODEL_NAME = "llama3" 
+MODEL_NAME = "llama3.2" 
 
 async def evaluate_with_llm(parsed_text: str, gold_text: str) -> str:
     """
