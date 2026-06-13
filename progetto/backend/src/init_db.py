@@ -5,9 +5,7 @@ from sqlalchemy.exc import OperationalError
 from .database import engine, SessionLocal, Base
 from .models import WebResource, GoldStandard
 
-def init_db():
-    print("Inizializzazione del database in corso...")
-    
+def init_db():    
     for attempt in range(10):
         try:
             # crea le tabelle nel database
