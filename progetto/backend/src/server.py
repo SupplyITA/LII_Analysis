@@ -19,6 +19,7 @@ from src.logic.parser_wikipedia import parser_wikipedia
 from src.logic.parser_grammy import parser_grammy
 from src.logic.parser_huddle import parser_huddle
 from src.logic.parser_academia import parser_academia
+from src.logic.llm_judge import evaluate_with_llm
 
 # ---------------gestione avvio server (lifespan) ---------------
 @asynccontextmanager
@@ -65,6 +66,9 @@ class JudgeResponse(BaseModel):
     model_name: str
     judge_score: int
     judge_feedback: str
+
+class LLMEvalRequest(BaseModel):
+    url: str
 
 # ---------------------------- Funzioni di supporto ----------------------------
 def remove_markdown(md: str) -> str:
@@ -303,3 +307,24 @@ def get_status(db: Session = Depends(get_db)):
     # da completare !!!
 
     return status
+
+
+@app.post("/llm_eval")
+async def llm_eval(request: LLMEvalRequest, db: Session = Depends(get_db)):
+    """ Restituisce il giudizio qualitativo dell'LLM su uno specifico URL """
+    
+    # recupera il testo estratto dal database
+    web_res = db.query(WebResource).filter(WebResource.url == request.url).first()
+    if not web_res:
+        raise HTTPException(status_code=404, detail="Testo estratto non trovato nel Database. Esegui prima il parsing.")
+    
+    # recupera il Gold Standard dal database
+    gs_entry = db.query(GoldStandard).filter(GoldStandard.url == request.url).first()
+    if not gs_entry:
+        raise HTTPException(status_code=404, detail="Gold Standard non trovato per questo URL.")
+
+    # pulisce il testo dal markdown prima di mandarlo all'LLM
+    testo_pulito = remove_markdown(web_res.html_text)
+    giudizio = await evaluate_with_llm(testo_pulito, gs_entry.gold_text)
+    
+    return {"url": request.url, "llm_judgment": giudizio}

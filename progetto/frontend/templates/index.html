@@ -48,6 +48,13 @@
             </div>
         {% endif %}
 
+        {% if llm_judgment %}
+        <div style="background-color: #e6ffe6; border: 1px solid #4caf50; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+            <h3 style="margin-top: 0;"> LLM Judge </h3>
+            <p style="white-space: pre-wrap; margin-bottom: 0;">{{ llm_judgment }}</p>
+        </div>
+        {% endif %}
+
         <div class="container">
             <div class="row">
                 <div class="box">
@@ -60,11 +67,11 @@
                 </div>
             </div>
             
-            {% if result.gold_text %}
+            {% if gs_text %}
             <div class="row">
                 <div class="box" style="width: 100%; height: 200px;">
                     <h3>Testo Gold Standard (Manuale)</h3>
-                    <div style="white-space: pre-wrap;">{{ result.gold_text }}</div>
+                    <div style="white-space: pre-wrap;">{{ gs_text }}</div>
                 </div>
             </div>
             {% endif %}

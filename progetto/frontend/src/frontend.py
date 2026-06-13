@@ -35,7 +35,9 @@ async def index(request: Request):
 async def process_url(request: Request, url: str = Form(...)):
     
     try:
-        domains = requests.get(f"{BACKEND_URL}/domains").json().get("domains", [])
+        domains_resp = requests.get(f"{BACKEND_URL}/domains").json()
+        domains = domains_resp.get("domains", [])
+        
         all_gs_urls = []
         for d in domains:
             gs_resp = requests.get(f"{BACKEND_URL}/full_gold_standard?domain={d}").json()
@@ -57,6 +59,8 @@ async def process_url(request: Request, url: str = Form(...)):
     parse_data = parse_resp.json()
     gs_data = None
     metrics = None
+    llm_judgment = None 
+
     gs_resp = requests.get(f"{BACKEND_URL}/gold_standard?url={url}")
     
     if gs_resp.status_code == 200:
@@ -68,15 +72,22 @@ async def process_url(request: Request, url: str = Form(...)):
         if eval_resp.status_code == 200:
             metrics = eval_resp.json().get("token_level_eval")
 
+        try:
+            llm_resp = requests.post(
+                f"{BACKEND_URL}/llm_eval",
+                json={"url": url},
+                timeout=130.0
+            )
+            if llm_resp.status_code == 200:
+                llm_judgment = llm_resp.json().get("llm_judgment")
+        except requests.exceptions.RequestException as e:
+            llm_judgment = f"Errore di connessione all'LLM. Dettaglio: {str(e)}"
+
+    # passiamo il giudizio dell'LLM al template HTML
     return templates.TemplateResponse(request, "index.html", {
         "gs_urls": all_gs_urls,
-        "result": {
-            "url": url,
-            "title": parse_data.get("title"),
-            "html_text": parse_data.get("html_text"),
-            "parsed_text": parse_data.get("parsed_text"),
-            "gold_text": gs_data.get("gold_text") if gs_data else None,
-            "metrics": metrics
-        },
-        "error": None
+        "result": parse_data,
+        "gs_text": gs_data["gold_text"] if gs_data else None,
+        "metrics": metrics,
+        "llm_judgment": llm_judgment
     })
