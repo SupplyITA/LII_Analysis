@@ -303,3 +303,50 @@ def get_status(db: Session = Depends(get_db)):
     # da completare !!!
 
     return status
+
+@app.post("/add_web_resource")
+def add_web_resource(request: ParseRequest, db: Session = Depends(get_db)):
+    """ Aggiunge una risorsa web nella tabella web_resources con l'HTML fornito in input """
+
+    # controlla se esiste già
+    existing = db.query(WebResource).filter(WebResource.url == request.url).first()
+    if existing:
+        return {
+            "status": "error",
+            "message": "URL già presente"
+        }
+    
+    nuova = WebResource(
+        url = request.url,
+        domain = urlparse(request.url).netloc.lower(),
+        title = "Inserito manualmente",
+        html_text = request.html_text
+    )
+    db.add(nuova)
+    db.commit()
+    return { "status": "ok" }
+
+@app.post("/add_gold_standard")
+def add_gold_standard(request: EvaluateRequest, url: str, db: Session = Depends(get_db)):
+    """Aggiunge un'entry nella tabella gold_standard """
+    res = db.query(WebResource).filter(WebResource.url == url).first()
+    if not res:
+        raise HTTPException(status_code = 400, detail = "URL non presente in web_resources")
+    
+    # se esiste il gs va aggiornato, altrimenti va creato
+    existing_gs = db.query(GoldStandard).filter(GoldStandard.url == url).first()
+    if existing_gs:
+        existing_gs.gold_text = request.gold_text
+    else:
+        db.add(GoldStandard(url=url, gold_text=request.gold_text))
+    
+    db.commit()
+    return { "status": "ok" }
+
+@app.delete("/delete_web_resource")
+def delete_web_resource(url: str, db: Session = Depends(get_db)):
+    """ Rimuove una risorsa web dalla tabella web_resources e a cascata con FK, il gold_standard associato """
+
+@app.delete("/delete_gold_standard")
+def delete_gold_standard(url: str, db: Session = Depends(get_db)):
+    """ Rimuove solo l'entry dalla tabella gold_standard, lasciando intatta la web_resource associata """
