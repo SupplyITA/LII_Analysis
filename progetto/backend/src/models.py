@@ -7,7 +7,7 @@ from .database import Base
 class WebResource(Base):
     __tablename__ = "web_resources"
 
-    url = Column(String(2048), primary_key=True)
+    url = Column(String(767), primary_key=True)
     domain = Column(String(255))
     title = Column(String(2048))
     html_text = Column(LONGTEXT)
@@ -19,7 +19,7 @@ class WebResource(Base):
 class GoldStandard(Base):
     __tablename__ = "gold_standard"
 
-    url = Column(String(2048), ForeignKey("web_resources.url"), primary_key=True)
+    url = Column(String(767), ForeignKey("web_resources.url"), primary_key=True)
     gold_text = Column(LONGTEXT)
     created_at = Column(DateTime, default=datetime.utcnow)
 
