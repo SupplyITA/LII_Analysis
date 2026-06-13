@@ -20,7 +20,7 @@ from src.logic.parser_grammy import parser_grammy
 from src.logic.parser_huddle import parser_huddle
 from src.logic.parser_academia import parser_academia
 
-# ---------------gestione avvio server (lifespan) ---------------
+# --------------- gestione avvio server (lifespan) ---------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """ Esegue operazioni di inizializzazione all'avvio del server """
@@ -219,7 +219,7 @@ async def full_gs_eval(domain: str, db: Session = Depends(get_db)):
     results = []
     for entry in gs_entries:
         try:
-            parsed_data = await get_parsed_data(entry.url)
+            parsed_data = await get_parsed_data(entry.url, html_text=entry.web_resource.html_text)
             if parsed_data:
                 raw_md = parsed_data.get("parsed_text", "")
                 clean_parsed_text = remove_markdown(raw_md)
