@@ -22,35 +22,38 @@ def clean_grammy_markdown(md_text: str) -> str:
     
     for line in lines:
         l_str = line.strip()
-        if l_str and not any(bad in l_str.lower() for bad in blacklist):
-            clean_lines.append(l_str)
+        if not l_str:
+            continue
+
+        lower_line= l_str.lower()
+
+        if len(l_str) < 150 and any(social in lower_line for social in ["twitter", "facebook", "whatsapp", "copy link"]):
+            continue
+            # m
+        if len(l_str) < 200 and any(bad in lower_line for bad in blacklist):
+            continue
+            
+        if re.match(r'^(top list|top feature)', l_str, re.IGNORECASE):
+            continue
+            
+        clean_lines.append(l_str)
             
     return "\n\n".join(clean_lines)
 
 async def parser_grammy(url: str, html_raw: str = None) -> dict:
+
     """
     Esegue il parsing specifico per grammy.com.
     Acquisizione sia tramite URL sia tramite HTML locale (se presente)
     """       
     browser_cfg = BrowserConfig(headless=True, extra_args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"])
         
-    # SCRIPT JS: Rimuove gli articoli successivi al primo e le sezioni di disturbo
-    js_kill_infinite_scroll = """
-    let articles = document.querySelectorAll('article');
-    if (articles.length > 1) {
-        for (let i = 1; i < articles.length; i++) {
-            articles[i].remove();
-        }
-    }
-    document.querySelectorAll('.read-more, .related-articles, .infinite-scroll').forEach(el => el.remove());
-    """
 
     # configurazione del crawler
     crawler_cfg = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS,
         css_selector="article", 
         excluded_tags=['header', 'footer', 'nav', 'aside', 'script', 'style', 'form'],
-        js_code=js_kill_infinite_scroll
     )
     
     target_url = url

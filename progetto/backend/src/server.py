@@ -7,7 +7,7 @@ import mistune
 from bs4 import BeautifulSoup
 from contextlib import asynccontextmanager
 from sqlalchemy.orm import Session
-from sqlalchemy import func, text, engine
+from sqlalchemy import func, text
 
 from src.database import get_db
 from src.models import WebResource, GoldStandard, Evaluation, JudgeEvaluation
@@ -42,7 +42,7 @@ class ParseResponse(BaseModel):
     html_text: str
     parsed_text: str
 
-class ParseRequest(BaseModel): # al posto di parsehtmlrequest !!!!!
+class ParseRequest(BaseModel):
     """ Input per POST/parse """
     url: str
     html_text: Optional[str] = None # invio manuale HTML
@@ -193,48 +193,78 @@ def evaluate(request: EvaluateRequest):
     return {"token_level_eval": metrics, "judge_score": 0.0}
 
 
+# modificato qquesto endpoint !
 @app.get("/full_gs_eval", response_model=EvaluationResponse)
 async def full_gs_eval(domain: str, db: Session = Depends(get_db)):
+    """ Valutazione complessiva leggendo dal database """
     if domain not in load_domains():
         raise HTTPException(status_code=400, detail="Dominio non supportato")
-    """ Valutazione complessiva leggendo dal DATABASE """
+    
     gs_entries = db.query(GoldStandard).join(WebResource).filter(WebResource.domain == domain).all()
     
     if not gs_entries:
         return {"token_level_eval": {"precision": 0.0, "recall": 0.0, "f1": 0.0}, "judge_score": 0.0}
     
-    results = []
-    judge_scores = []
+    results_metrics = []
+    results_scores = []
     
     for entry in gs_entries:
         try:
+            # prende html dal db e lo parsa
             html_salvato = entry.web_resource.html_text if entry.web_resource else None
             parsed_data = await get_parsed_data(entry.url, html_text=html_salvato) 
-            # Questa modifica (ovvero l'aggiunta dell'html salvato) velocizza i controlli, fixa i problemi con l'F1 aggregato usando html pre scaricati
-            
+
             if parsed_data:
                 raw_md = parsed_data.get("parsed_text", "")
                 clean_parsed_text = remove_markdown(raw_md)
+
+                # calcolo metriche
                 metrics = compute_token_level_eval(clean_parsed_text, entry.gold_text)
-                results.append(metrics)
+                results_metrics.append(metrics)
+
+                # judge evaluation - llm
+                giudizio = await evaluate_with_llm(clean_parsed_text, entry.gold_text)
+                score_match = re.search(r'\b([1-5])\b', giudizio)
+                score = int(score_match.group(1)) if score_match else 3
+                results_scores.append(score)
+
+                # salvataggio statistiche pre-calcolate
+                db.query(Evaluation).filter(Evaluation.url == entry.url).delete()
+                db.query(JudgeEvaluation).filter(JudgeEvaluation.url == entry.url).delete()
+                db.add(Evaluation(
+                    url=entry.url,
+                    precision_score=metrics["precision"],
+                    recall_score = metrics["recall"],
+                    f1_score = metrics["f1"]
+                ))
+                db.add(JudgeEvaluation(url=entry.url, model_name="llama3.2:3b", score=score, feedback=giudizio))
+
         except Exception as e:
             print(f"Errore su {entry.url}: {str(e)}")
-            continue
-
-    if not results:
-        return {"token_level_eval": {"precision": 0.0, "recall": 0.0, "f1": 0.0}, "judge_score": 0.0}
+            continue    # per non bloccare tutto il processo
     
-    avg_precision = sum(r["precision"] for r in results) / len(results)
-    avg_recall = sum(r["recall"] for r in results) / len(results)
-    avg_f1 = sum(r["f1"] for r in results) / len(results)
+    # commit delle valutazioni nel db
+    db.commit()
 
+    if not results_metrics:
+        raise HTTPException(status_code=500, detail="Impossibile calcolare valutazioni per il dominio")
+        # return {"token_level_eval": {"precision": 0.0, "recall": 0.0, "f1": 0.0}, "judge_score": 0.0}
+
+    # calcolo metriche aggregate
+    avg_precision = sum(r["precision"] for r in results_metrics) / len(results_metrics)
+    avg_recall = sum(r["recall"] for r in results_metrics) / len(results_metrics)
+    avg_f1 = sum(r["f1"] for r in results_metrics) / len(results_metrics)
+    avg_judge = sum(results_scores) / len (results_scores) if results_scores else 0.0
+       
     return {
         "token_level_eval": {
             "precision": round(avg_precision, 4),
             "recall": round(avg_recall, 4),
             "f1": round(avg_f1, 4)
         },
-        "judge_score": 0.0
+        "judge_score": round(avg_judge, 2),
+        # ?
+        "x_eval": {}
         }
 
 @app.post("/evaluate_judge", response_model=JudgeResponse)
@@ -255,27 +285,56 @@ async def evaluate_judge(request: EvaluateRequest):
 
 @app.get("/db_stats")
 def get_db_stats(db: Session = Depends(get_db)):
-    """ Restituisce conteggi per dominio """
+    """ Restituisce conteggi e medie pre-calcolate per dominio """
     domains = load_domains()
 
+    # inizializzazione strutture dati per tutti i domini
     wr_counts = {d: 0 for d in domains}
     gs_counts = {d: 0 for d in domains}
     avg_eval_dict = {d: {"token_level_eval":{"precision": 0.0, "recall": 0.0, "f1": 0.0}} for d in domains}
     avg_eval_judge_dict = {d: {"judge_score":0.0} for d in domains}
 
-    
+    # conteggio web resources
     wr_stats = db.query(WebResource.domain, func.count(WebResource.url)).group_by(WebResource.domain).all()
+    for dom, count in wr_stats:
+        if dom in wr_counts: wr_counts[dom] = count
+
+    # conteggio gold standard
     gs_stats = db.query(WebResource.domain, func.count(GoldStandard.url)).join(GoldStandard, WebResource.url == GoldStandard.url).group_by(WebResource.domain).all()
-    
-    for d, c in wr_stats: wr_counts[d] = c
-    for d, c in gs_stats: gs_counts[d] = c
+    for dom, count in gs_stats:
+        if dom in gs_counts: gs_counts[dom] = count
+
+    # calcolo metriche
+    for d in domains:
+        # metriche prese dalla tabella Evaluation
+        metrics_avg = db.query(
+            func.avg(Evaluation.precision_score),
+            func.avg(Evaluation.recall_score),
+            func.avg(Evaluation.f1_score)            
+        ).join(WebResource, Evaluation.url == WebResource.url).filter(WebResource.domain == d).first()
+
+        if metrics_avg and metrics_avg[0] is not None:
+            avg_eval_dict[d]["token_level_eval"] = {
+                "precision": round(metrics_avg[0], 4),
+                "recall": round(metrics_avg[1], 4),
+                "f1": round(metrics_avg[2], 4)
+            }
         
+        # media judge dalla tabella JudgeEvaluation
+        judge_avg = db.query(
+            func.avg(JudgeEvaluation.score)
+        ).join(WebResource, JudgeEvaluation.url == WebResource.url).filter(WebResource.domain == d).scalar()
+
+        if judge_avg is not None:
+            avg_eval_judge_dict[d]["judge_score"] = round(float(judge_avg), 2)
+
     return {
         "web_resources": wr_counts,
         "gold_standard": gs_counts,
         "avg_eval": avg_eval_dict,   
         "avg_eval_judge": avg_eval_judge_dict  
     }
+
 
 
 @app.get("/db_schema")
@@ -308,7 +367,7 @@ def get_status(db: Session = Depends(get_db)):
 
     # controllo db
     try:
-        db.execute("SELECT 1")  
+        db.execute(text("SELECT 1")) 
     except:
         status["database"] = "error"
 
