@@ -21,7 +21,7 @@ from src.logic.parser_huddle import parser_huddle
 from src.logic.parser_academia import parser_academia
 from src.logic.llm_judge import evaluate_with_llm
 
-# ---------------gestione avvio server (lifespan) ---------------
+# --------------- gestione avvio server (lifespan) ---------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -103,10 +103,14 @@ def get_domains():
 
 @app.post("/parse", response_model=ParseResponse)
 async def parse(request: ParseRequest, db: Session = Depends(get_db)):    
+    """ Esegue il parser su un testo HTML fornito e lo SALVA NEL DATABASE """
+    
+    # verifica se il dominio è supportato
     supported_domains = load_domains()
     if not any(d in request.url for d in supported_domains):
         raise HTTPException(status_code=400, detail="Dominio non supportato")
 
+    # gestione local = True
     html_to_use = request.html_text
     if request.local:
         db_res = db.query(WebResource).filter(WebResource.url == request.url).first()
@@ -163,27 +167,37 @@ async def full_gs_eval(domain: str, db: Session = Depends(get_db)):
         return {"token_level_eval": {"precision": 0.0, "recall": 0.0, "f1": 0.0}, "judge_score": 0.0}
     
     results = []
+    judge_scores = []
     for entry in gs_entries:
         try:
-            parsed_data = await get_parsed_data(entry.url)
+            # usa html del db
+            parsed_data = await get_parsed_data(entry.url, html_text=entry.web_resource.html_text)
             if parsed_data:
                 raw_md = parsed_data.get("parsed_text", "")
                 clean_parsed_text = remove_markdown(raw_md)
                 metrics = compute_token_level_eval(clean_parsed_text, entry.gold_text)
                 results.append(metrics)
+                ia_res = await evaluate_with_llm(clean_parsed_text, entry.gold_text)
+                judge_scores.append(ia_res.get("score", 1))
         except: continue
 
     if not results:
-        return {"token_level_eval": {"precision": 0.0, "recall": 0.0, "f1": 0.0}, "judge_score": 0.0}
+        raise HTTPException(status_code=500, detail="Impossibile valutare il dominio")
+        # return {"token_level_eval": {"precision": 0.0, "recall": 0.0, "f1": 0.0}, "judge_score": 0.0}
     
     avg_precision = sum(r["precision"] for r in results) / len(results)
     avg_recall = sum(r["recall"] for r in results) / len(results)
     avg_f1 = sum(r["f1"] for r in results) / len(results)
 
-    return {"token_level_eval": {"precision": round(avg_precision, 4), "recall": round(avg_recall, 4), "f1": round(avg_f1, 4)}, "judge_score": 0.0}
+    return {"token_level_eval": {"precision": round(avg_precision, 4), 
+                                 "recall": round(avg_recall, 4), 
+                                 "f1": round(avg_f1, 4)}, 
+                                 "judge_score": round(sum(judge_scores) / len(judge_scores), 2) if judge_scores else 0.0
+                                 }
 
 @app.post("/evaluate_judge", response_model=JudgeResponse)
 async def evaluate_judge(request: EvaluateRequest):
+    """ Valutazione qualitativa dell'LLM """
     try:
         clean_parsed_text = remove_markdown(request.parsed_text)
         giudizio = await evaluate_with_llm(clean_parsed_text, request.gold_text)
@@ -267,11 +281,77 @@ def add_gold_standard(gs: GoldStandardCreate, db: Session = Depends(get_db)):
 def delete_web_resource(url: str, db: Session = Depends(get_db)):
     db.query(GoldStandard).filter(GoldStandard.url == url).delete()
     db.query(WebResource).filter(WebResource.url == url).delete()
+
+    # controllo ollama
+    try:
+        r = requests.get("http://ollama:11434/api/tags", timeout=2)
+        if r.status_code != 200: status["ollama"] = "error"
+    except:
+        status["ollama"] = "error"
+
+    return status
+
+@app.post("/add_web_resource")
+def add_web_resource(request: ParseRequest, db: Session = Depends(get_db)):
+    """ Aggiunge una risorsa web nella tabella web_resources con l'HTML fornito in input """
+
+    # controlla se esiste già
+    existing = db.query(WebResource).filter(WebResource.url == request.url).first()
+    if existing:
+        return {
+            "status": "error",
+            "message": "URL già presente"
+        }
+    
+    title = "Manuale"
+    match = re.search(r'<title>(.*?)</title>', request.html_text, re.IGNORECASE)
+    if match: title = match.group(1).strip()
+
+    nuova = WebResource(
+        url = request.url,
+        domain = urlparse(request.url).netloc.lower(),
+        title = title,
+        html_text = request.html_text
+    )
+    db.add(nuova)
+    db.commit()
+    return { "status": "ok" }
+
+@app.post("/add_gold_standard")
+def add_gold_standard(request: EvaluateRequest, url: str, db: Session = Depends(get_db)):
+    """Aggiunge un'entry nella tabella gold_standard """
+    res = db.query(WebResource).filter(WebResource.url == url).first()
+    if not res:
+        raise HTTPException(status_code = 400, detail = "URL non presente in web_resources")
+    
+    # se esiste il gs va aggiornato, altrimenti va creato
+    existing_gs = db.query(GoldStandard).filter(GoldStandard.url == url).first()
+    if existing_gs:
+        existing_gs.gold_text = request.gold_text
+    else:
+        db.add(GoldStandard(url=url, gold_text=request.gold_text))
+    
+    db.commit()
+    return { "status": "ok" }
+
+@app.delete("/web_resource")
+def delete_web_resource(url: str, db: Session = Depends(get_db)):
+    """ Rimuove una risorsa web dalla tabella web_resources e a cascata con FK, il gold_standard associato """
+    res = db.query(WebResource).filter(WebResource.url == url).first()
+    if not res:
+        raise HTTPException(status_code=404, detail="Risorsa non trovata")
+    
+    db.delete(res)
     db.commit()
     return {"status": "ok"}
 
 @app.delete("/gold_standard")
 def delete_gold_standard(url: str, db: Session = Depends(get_db)):
-    db.query(GoldStandard).filter(GoldStandard.url == url).delete()
+    """ Rimuove solo l'entry dalla tabella gold_standard, lasciando intatta la web_resource associata """
+    gs = db.query(GoldStandard).filter(GoldStandard.url == url).first()
+    if not gs:
+        raise HTTPException(status_code=404, detail="Gold Standard non trovato")
+    
+    db.delete(gs)
     db.commit()
     return {"status": "ok"}
