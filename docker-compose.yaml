@@ -1,0 +1,41 @@
+services:
+  database:
+    image: mariadb:lts
+    container_name: minerva_db
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: minerva
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mariadb_data:/var/lib/mysql
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: minerva_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./ollama_data:/root/.ollama
+
+  backend:
+    build: ./backend
+    container_name: minerva_backend
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./gs_data:/gs_data
+      - ./domains.json:/domains.json
+    depends_on:
+      - database
+      - ollama
+
+  frontend:
+    build: ./frontend
+    container_name: minerva_frontend
+    ports:
+      - "8004:8004"
+    depends_on:
+      - backend

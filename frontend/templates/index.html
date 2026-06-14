@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <title>Laboratorio Ingegneria Informatica - Web UI</title>
+    <style>
+        /* stile generale */
+        body { font-family: sans-serif; margin: 20px; }
+        .container { display: flex; flex-direction: column; gap: 20px; }
+        .row { display: flex; gap: 10px; }
+        .box { border: 1px solid #ccc; padding: 10px; width: 50%; height: 400px; overflow: auto; background: #f9f9f9; }
+        .metrics { background: #e0f0ff; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        .error-box { color: #D8000C; background-color: #FFBABA; border: 1px solid #D8000C; padding: 10px; margin-top: 15px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Parser Web UI</h1>
+
+    <form action="/process" method="post">
+        <label>Inserisci URL:</label>
+        <input type="text" name="url" style="width: 400px;" required>
+        
+        <label>Oppure scegli dal GS:</label>
+        <select onchange="this.form.url.value=this.value">
+            <option value="">-- Seleziona --</option>
+            {% for g_url in gs_urls %}
+                <option value="{{ g_url }}">{{ g_url }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit">Analizza</button>
+    </form>
+
+    {% if error %}
+        <div class="error-box">
+            <b>Errore:</b> {{ error }}
+        </div>
+    {% endif %}
+
+    {% if result %}
+        <hr>
+        <h2>Risultati per: {{ result.title }}</h2>
+        
+        {% if result.metrics %}
+            <div class="metrics">
+                <h3>Valutazione Token-Level</h3>
+                <p><b>Precision:</b> {{ result.metrics.precision }} | 
+                   <b>Recall:</b> {{ result.metrics.recall }} | 
+                   <b>F1-Score:</b> {{ result.metrics.f1 }}</p>
+            </div>
+        {% endif %}
+
+        {% if llm_judgment %}
+        <div style="background-color: #e6ffe6; border: 1px solid #4caf50; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+            <h3 style="margin-top: 0;"> LLM Judge </h3>
+            <p style="white-space: pre-wrap; margin-bottom: 0;">{{ llm_judgment }}</p>
+        </div>
+        {% endif %}
+
+        <div class="container">
+            <div class="row">
+                <div class="box">
+                    <h3>HTML Grezzo</h3>
+                    <pre style="white-space: pre-wrap; word-wrap: break-word;">{{ result.html_text }}</pre>
+                </div>
+                <div class="box">
+                    <h3>Testo Pulito (Parsed)</h3>
+                    <div style="white-space: pre-wrap;">{{ result.parsed_text }}</div>
+                </div>
+            </div>
+            
+            {% if gs_text %}
+            <div class="row">
+                <div class="box" style="width: 100%; height: 200px;">
+                    <h3>Testo Gold Standard (Manuale)</h3>
+                    <div style="white-space: pre-wrap;">{{ gs_text }}</div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    {% endif %}
+</body>
+</html>
