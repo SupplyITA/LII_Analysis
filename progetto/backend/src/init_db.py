@@ -1,13 +1,25 @@
 import os
 import json
+import time
+from sqlalchemy.exc import OperationalError
 from .database import engine, SessionLocal, Base
-from .models import WebResource, GoldStandard
+from .models import WebResource, GoldStandard, Evaluation, JudgeEvaluation
 
 def init_db():
     print("Inizializzazione del database in corso...")
     
-    #crea le tabelle nel database 
-    Base.metadata.create_all(bind=engine)
+    for attempt in range(10):
+        try:
+            #crea le tabelle nel database 
+            Base.metadata.create_all(bind=engine)
+            print("Connessione a MariaDB stabilita con successo!")
+            break
+        except Exception as e:
+            print(f"MariaDB non è ancora pronto (tentativo {attempt+1}/10). Errore: {e}. Attendo 3 secondi...")
+            time.sleep(3)
+    else:
+        print("Errore critico: Il database non ha risposto in tempo.")
+        return
     
     #popola il database con i dati in gs_data/
     db = SessionLocal()

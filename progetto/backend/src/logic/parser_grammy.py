@@ -11,6 +11,22 @@ def get_domain(url: str) -> str:
     parsed = urlparse(url)
     return parsed.netloc.lower()
 
+def clean_grammy_markdown(md_text: str) -> str:
+    if not md_text: return ""
+    
+    md_text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', md_text)
+    
+    lines = md_text.split('\n')
+    clean_lines = []
+    blacklist = ["read more", "watch:", "listen:", "photo by", "getty images", "related:", "share this", "subscribe", "newsletter", "twitter", "facebook"]
+    
+    for line in lines:
+        l_str = line.strip()
+        if l_str and not any(bad in l_str.lower() for bad in blacklist):
+            clean_lines.append(l_str)
+            
+    return "\n\n".join(clean_lines)
+
 async def parser_grammy(url: str, html_raw: str = None) -> dict:
     """
     Esegue il parsing specifico per grammy.com.
@@ -32,10 +48,9 @@ async def parser_grammy(url: str, html_raw: str = None) -> dict:
     # configurazione del crawler
     crawler_cfg = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS,
-        css_selector="main", 
+        css_selector="article", 
         excluded_tags=['header', 'footer', 'nav', 'aside', 'script', 'style', 'form'],
         js_code=js_kill_infinite_scroll
-        # RIMOSSO: wait_for="domcontentloaded" che causava il blocco dei 60 secondi
     )
     
     target_url = url
