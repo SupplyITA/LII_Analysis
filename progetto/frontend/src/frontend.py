@@ -32,7 +32,7 @@ async def index(request: Request):
     })
 
 @app.post("/process", response_class=HTMLResponse)
-async def process_url(request: Request, url: str = Form(...)):
+async def process_url(request: Request, url: str = Form(...), local: bool = Form(False)):
     
     try:
         domains = requests.get(f"{BACKEND_URL}/domains").json().get("domains", [])
@@ -44,9 +44,11 @@ async def process_url(request: Request, url: str = Form(...)):
     except Exception:
         all_gs_urls = []
 
-    parse_resp = requests.get(f"{BACKEND_URL}/parse?url={url}")
+    # chiamata a parse (con nuovo schema)
+    parse_resp = requests.post(f"{BACKEND_URL}/parse", json={"url": url, "local": local})
+    
     if parse_resp.status_code != 200:
-        error_data = parse_resp.json()
+        error_data = parse_resp.json()        
         error_message = error_data.get("detail", "Errore durante il parsing dell'URL.")
         return templates.TemplateResponse(request, "index.html", {
             "gs_urls": all_gs_urls,
@@ -57,17 +59,33 @@ async def process_url(request: Request, url: str = Form(...)):
     parse_data = parse_resp.json()
     gs_data = None
     metrics = None
-    gs_resp = requests.get(f"{BACKEND_URL}/gold_standard?url={url}")
-    
-    if gs_resp.status_code == 200:
-        gs_data = gs_resp.json()
+    # gs_resp = requests.get(f"{BACKEND_URL}/gold_standard?url={url}")
+    judge_data = None
+
+    # si controlla se l'url è già nel gs
+    gs_check = requests.get(f"{BACKEND_URL}/gold_standard", params={"url": url})
+
+    if gs_check.status_code == 200:
+        gs_data = gs_check.json()
+
+        # valutazione matematica
         eval_resp = requests.post(
             f"{BACKEND_URL}/evaluate", 
-            json={"parsed_text": parse_data["parsed_text"], "gold_text": gs_data["gold_text"]}
-        )
+            json={"parsed_text": parse_data["parsed_text"], 
+            "gold_text": gs_data["gold_text"]}
+        )        
         if eval_resp.status_code == 200:
             metrics = eval_resp.json().get("token_level_eval")
 
+        # valutazione llm judge
+        j_resp = requests.post(
+            f"{BACKEND_URL}/evaluate_judge", 
+            json={"parsed_text": parse_data["parsed_text"], "gold_text": gs_data["gold_text"]}
+        )
+        if j_resp.status_code == 200:
+            judge_data = j_resp.json()
+         
+    # invio al template
     return templates.TemplateResponse(request, "index.html", {
         "gs_urls": all_gs_urls,
         "result": {
@@ -76,7 +94,8 @@ async def process_url(request: Request, url: str = Form(...)):
             "html_text": parse_data.get("html_text"),
             "parsed_text": parse_data.get("parsed_text"),
             "gold_text": gs_data.get("gold_text") if gs_data else None,
-            "metrics": metrics
+            "metrics": metrics,
+            "judge": judge_data
         },
         "error": None
     })
