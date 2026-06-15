@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laboratorio Ingegneria Informatica - Web UI</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .status-dot { height: 12px; width: 12px; border-radius: 50%; display: inline-block; }
+        .bg-ok { background-color: #28a745; }
+        .bg-error { background-color: #dc3545; }
+        pre { background: #f8f9fa; padding: 10px; border: 1px solid #ddd; max-height: 300px; overflow-y: auto; }
+    </style>
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="/">Minerva Dashboard</a>
+            <div class="navbar-nav">
+                <a class="nav-link" href="/evaluation">Parser & Evaluation</a>
+                <a class="nav-link" href="/gs_builder">Gold Standard Builder</a>
+                <a class="nav-link" href="/stats">Stats</a>
+            </div>
+        </div>
+    </nav>
+    <div class="container">
+        {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+        {% endif %}
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<h3>Parser & Evaluation</h3>
+<form method="POST" class="card p-3 mb-4 shadow-sm">
+    <div class="row">
+        <div class="col-md-8">
+            <label>URL da testare</label>
+            <input type="text" name="url" list="gs_list" class="form-control" required placeholder="Inserisci URL o scegli dal GS">
+            <datalist id="gs_list">
+                {% for u in gs_urls %}<option value="{{ u }}">{% endfor %}
+            </datalist>
+        </div>
+        <div class="col-md-4">
+            <label>Modalità</label><br>
+            <div class="btn-group w-100">
+                <input type="radio" class="btn-check" name="local" id="live" value="False" checked>
+                <label class="btn btn-outline-primary" for="live">Live (Web)</label>
+                <input type="radio" class="btn-check" name="local" id="local" value="True">
+                <label class="btn btn-outline-primary" for="local">Local (DB)</label>
+            </div>
+        </div>
+    </div>
+    <button type="submit" class="btn btn-dark mt-3">Esegui parsing e valutazione</button>
+</form>
+
+{% if result %}
+<div class="row">
+    <div class="col-md-6">
+        <h6>Input HTML (Grezzo)</h6>
+        <pre>{{ result.html_text }}</pre>
+    </div>
+    <div class="col-md-6">
+        <h6>Output Parsed (Markdown)</h6>
+        <pre>{{ result.parsed_text }}</pre>
+    </div>
+</div>
+
+{% if result.gold_text %}
+<div class="card mt-4 border-primary">
+    <div class="card-header bg-primary text-white">Confronto con Gold Standard</div>
+    <div class="card-body">
+        <h6>Gold Text:</h6>
+        <p class="small p-2 bg-light border">{{ result.gold_text }}</p>
+        <div class="row text-center mt-3">
+            <div class="col"><strong>Precision</strong><br>{{ result.metrics.precision }}</div>
+            <div class="col"><strong>Recall</strong><br>{{ result.metrics.recall }}</div>
+            <div class="col"><strong>F1 Score</strong><br>{{ result.metrics.f1 }}</div>
+            <div class="col"><strong>LLM Judge</strong><br><span class="badge bg-dark">{{ result.judge.judge_score }}/5</span></div>
+        </div>
+        <div class="mt-3 small text-muted italic">Feedback Judge: {{ result.judge.judge_feedback }}</div>
+    </div>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

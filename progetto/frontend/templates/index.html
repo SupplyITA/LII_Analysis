@@ -1,74 +1,37 @@
-<!DOCTYPE html>
-<html lang="it">
-<head>
-    <title>Laboratorio Ingegneria Informatica - Web UI</title>
-    <style>
-        /* stile generale */
-        body { font-family: sans-serif; margin: 20px; }
-        .container { display: flex; flex-direction: column; gap: 20px; }
-        .row { display: flex; gap: 10px; }
-        .box { border: 1px solid #ccc; padding: 10px; width: 50%; height: 400px; overflow: auto; background: #f9f9f9; }
-        .metrics { background: #e0f0ff; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
-        .error-box { color: #D8000C; background-color: #FFBABA; border: 1px solid #D8000C; padding: 10px; margin-top: 15px; border-radius: 5px; }
-    </style>
-</head>
-<body>
-    <h1>Parser Web UI</h1>
+<!-- homepage-->
 
-    <form action="/process" method="post">
-        <label>Inserisci URL:</label>
-        <input type="text" name="url" style="width: 400px;" required>
-        
-        <label>Oppure scegli dal GS:</label>
-        <select onchange="this.form.url.value=this.value">
-            <option value="">-- Seleziona --</option>
-            {% for g_url in gs_urls %}
-                <option value="{{ g_url }}">{{ g_url }}</option>
-            {% endfor %}
-        </select>
-        <button type="submit">Analizza</button>
-    </form>
-
-    {% if error %}
-        <div class="error-box">
-            <b>Errore:</b> {{ error }}
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-md-12 text-center mb-5">
+        <h1>Laboratorio di Ingegneria Informatica</h1>
+        <p class="text-muted">Gruppo: Matteo Martin Console 2112194, Giulia Codella 2118019, Alice Agneni 2128893</p>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card mb-4 shadow-sm">
+            <div class="card-body">
+                <h5>System Status</h5>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item">Backend: <span class="status-dot bg-{{ status.backend }}"></span> {{ status.backend }}</li>
+                    <li class="list-group-item">Database: <span class="status-dot bg-{{ status.database }}"></span> {{ status.database }}</li>
+                    <li class="list-group-item">Ollama (LLM): <span class="status-dot bg-{{ status.ollama }}"></span> {{ status.ollama }}</li>
+                </ul>
+            </div>
         </div>
-    {% endif %}
+    </div>
 
-    {% if result %}
-        <hr>
-        <h2>Risultati per: {{ result.title }}</h2>
-        
-        {% if result.metrics %}
-            <div class="metrics">
-                <h3>Valutazione Token-Level</h3>
-                <p><b>Precision:</b> {{ result.metrics.precision }} | 
-                   <b>Recall:</b> {{ result.metrics.recall }} | 
-                   <b>F1-Score:</b> {{ result.metrics.f1 }}</p>
-            </div>
-        {% endif %}
-
-        <div class="container">
-            <div class="row">
-                <div class="box">
-                    <h3>HTML Grezzo</h3>
-                    <pre style="white-space: pre-wrap; word-wrap: break-word;">{{ result.html_text }}</pre>
-                </div>
-                <div class="box">
-                    <h3>Testo Pulito (Parsed)</h3>
-                    <div style="white-space: pre-wrap;">{{ result.parsed_text }}</div>
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5>Domini Supportati</h5>
+                <div class="list-group">
+                    {% for d in domains %}
+                    <div class="list-group-item small">{{ d }}</div>
+                    {% endfor %}
                 </div>
             </div>
-            
-            {% if result.gold_text %}
-            <div class="row">
-                <div class="box" style="width: 100%; height: 200px;">
-                    <h3>Testo Gold Standard (Manuale)</h3>
-                    <div style="white-space: pre-wrap;">{{ result.gold_text }}</div>
-                </div>
-            </div>
-            {% endif %}
         </div>
-    {% endif %}
-</body>
-</html>
+    </div>
+</div>
+{% endblock %}
