@@ -2,8 +2,6 @@ import os
 import re
 import html
 import tempfile
-import json
-import asyncio
 from urllib.parse import urlparse
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 
@@ -98,49 +96,3 @@ async def parser_huddle(url: str, html_raw: str = None) -> dict:
             try: os.remove(temp_html_path)
             except: pass
 
-if __name__ == "__main__":
-
-    test_url = "" 
-    
-    mio_gold_text_manuale = """
-"""
-
-    filename = "progetto/gs_data/www.huddle.org_gs.json"
-   
-    async def run():
-        try:
-            print(f"Eseguo parser su: {test_url}")
-            res = await parser_huddle(test_url)
-            print(f"DEBUG - Titolo estratto: {res['title']}")
-            
-            nuova_entry = {
-                "url": res['url'],
-                "domain": res['domain'],
-                "title": res['title'],
-                "html_text": res['html_text'], 
-                "gold_text": mio_gold_text_manuale.strip()
-            }
-
-            dati_esistenti = []
-            if os.path.exists(filename):
-                with open(filename, "r", encoding="utf-8") as f:
-                    try:
-                        dati_esistenti = json.load(f)
-                    except:
-                        dati_esistenti = []
-            
-            # verifica duplicati
-            if not any(e['url'] == nuova_entry['url'] for e in dati_esistenti):
-                dati_esistenti.append(nuova_entry)
-                # crea la cartella se non esiste
-                os.makedirs(os.path.dirname(filename), exist_ok=True)
-                with open(filename, "w", encoding="utf-8") as f:
-                    json.dump(dati_esistenti, f, indent=4, ensure_ascii=False)
-                print(f"SUCCESSO: Pagina aggiunta a {filename}.")
-            else:
-                print("URL già presente nel file. Salto.")
-
-        except Exception as e:
-            print(f"Errore durante l'esecuzione: {e}")
-
-    asyncio.run(run())

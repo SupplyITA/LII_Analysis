@@ -8,7 +8,10 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 def get_domain(url: str) -> str:
     """ Restituisce il dominio in minuscolo da un URL dato """
     parsed = urlparse(url)
-    return parsed.netloc.lower()
+    domain = parsed.netloc.lower()
+    if domain.startswith("www."):
+        domain = domain[4:]
+    return domain
 
 def clean_grammy_markdown(md_text: str, is_live_test: bool = False) -> str:
     if not md_text: return ""
@@ -52,10 +55,7 @@ def clean_grammy_markdown(md_text: str, is_live_test: bool = False) -> str:
         if l_str.startswith('|') and '|' in l_str[1:]:
             continue 
 
-        # -----------------------------------------------------------------
-        # L'IMPRONTA DIGITALE IN AZIONE: 
         # Taglia le notizie e le liste infinite SOLO se siamo nel test live
-        # -----------------------------------------------------------------
         if is_live_test:
             if "lady gaga news" in lower_line or "latest news" in lower_line or "all grammy awards and nominations" in lower_line:
                 skip_mode = True
@@ -137,7 +137,6 @@ async def parser_grammy(url: str, html_raw: str = None) -> dict:
             else:
                 title = "Grammy Resource"
 
-            # IL RILEVATORE: Se l'HTML contiene la firma di Crawl4AI, siamo nel test DB
             is_live_test = True
             if html_raw and "crawl4ai-result" in html_raw[:300]:
                 is_live_test = False
@@ -154,3 +153,4 @@ async def parser_grammy(url: str, html_raw: str = None) -> dict:
     finally:
         if temp_html_path and os.path.exists(temp_html_path):
             os.remove(temp_html_path)
+
