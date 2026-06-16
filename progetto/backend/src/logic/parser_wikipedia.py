@@ -20,11 +20,24 @@ async def parser_wikipedia(url: str, html_raw: str = None) -> dict:
     
     # rimuove elementi non informativi 
     js_script = """
+    let pageTitle = "No Title Found";
+    let heading = document.getElementById('firstHeading');
+    if (heading) {
+        pageTitle = heading.innerText;
+    } else if (document.title) {
+        pageTitle = document.title.replace(' - Wikipedia', '');
+    }
+
     document.querySelectorAll('sup, nav, footer, script, style, .infobox, .reflist, .navbox, .mw-editsection, .reference, .metadata, .printfooter').forEach(el => el.remove());
     let seeAlso = document.getElementById('See_also');
     if (seeAlso && seeAlso.parentNode) {
         while (seeAlso.parentNode.nextSibling) { seeAlso.parentNode.nextSibling.remove(); }
         seeAlso.parentNode.remove();
+    }
+
+    let content = document.querySelector('#mw-content-text');
+    if (content) {
+        content.setAttribute('data-wiki-title', pageTitle.replace(/"/g, '&quot;'));
     }
     """
     # configurazione del crawler
@@ -47,7 +60,16 @@ async def parser_wikipedia(url: str, html_raw: str = None) -> dict:
                 raise Exception(f"Errore durante il crawling: {result.error_message}")
 
             # estrazione dinamica del titolo
-            title = result.metadata.get('title', 'No Title Found') if result.metadata else "No Title Found"
+            title = "No Title Found"
+            if result.html:
+                # Estrae l'attributo che abbiamo iniettato tramite JavaScript
+                match = re.search(r'data-wiki-title="([^"]+)"', result.html)
+                if match:
+                    title = match.group(1).replace('&quot;', '"')
+                    
+            # Fallback di sicurezza nel caso in cui stia usando il comportamento base
+            if title == "No Title Found" and result.metadata:
+                title = result.metadata.get("title", "No Title Found")
             
             return {
                 "url": url,
