@@ -4,6 +4,7 @@ import html
 from urllib.parse import urlparse
 import tempfile
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
+import asyncio, json
 
 def get_domain(url: str) -> str:  
     """ Restituisce il dominio in minuscolo da un URL dato """     
@@ -146,3 +147,43 @@ async def parser_academia(url: str, html_raw: str = None) -> dict:
     finally:
         if temp_html_path and os.path.exists(temp_html_path):
             os.remove(temp_html_path)
+
+# -------------------------- AGGIUNTA URLLLLLLLLLLLL --------------------------
+if __name__ == "__main__":
+
+    test_url = "https://www.academia.edu/38871189/Artificial_Intelligence" 
+   
+    mio_gold_text_manuale = """
+This essay explores the dual perspectives on the impact of artificial intelligence (AI) on human life. While advancements in AI promise greater efficiency and accuracy in various sectors, replacing human roles with machines raises concerns about societal readiness to embrace this change. The paper discusses the benefits of AI in terms of improved operational capabilities and potential for enhanced quality of life, as well as the apprehension surrounding job displacement and the ethical implications of reliance on intelligent machines.
+"""
+   
+    filename = "progetto/gs_data/www.academia.edu_gs.json"
+   
+    try:
+        res = asyncio.run(parser_academia(test_url))
+        
+        nuova_entry = {
+            "url": res['url'],
+            "domain": res['domain'],
+            "title": res['title'],
+            "html_text": res['html_text'], 
+            "gold_text": mio_gold_text_manuale.strip()
+        }
+
+        if os.path.exists(filename):
+            with open(filename, "r", encoding="utf-8") as f:
+                try:
+                    dati_esistenti = json.load(f)
+                except json.JSONDecodeError:
+                    dati_esistenti = []
+        else:
+            dati_esistenti = []
+
+        dati_esistenti.append(nuova_entry)
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(dati_esistenti, f, indent=4, ensure_ascii=False)
+            
+        print(f"SUCCESSO: Pagina aggiunta al file {filename}.")
+
+    except Exception as e:
+        print(f"Errore durante il test: {e}")            
