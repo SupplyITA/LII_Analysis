@@ -223,21 +223,34 @@ async def full_gs_eval(domain: str, db: Session = Depends(get_db)):
                 results_metrics.append(metrics)
 
                 # judge evaluation - llm
+                ia_res = await evaluate_with_llm(clean_parsed_text, entry.gold_text)
+                score = ia_res.get("score", 1) 
+                results_scores.append(score)
+
+                ''' parte sbagliatissima !!!
+                # judge evaluation - llm
                 giudizio = await evaluate_with_llm(clean_parsed_text, entry.gold_text)
                 score_match = re.search(r'\b([1-5])\b', giudizio)
                 score = int(score_match.group(1)) if score_match else 3
                 results_scores.append(score)
-
+                '''
                 # salvataggio statistiche pre-calcolate
                 db.query(Evaluation).filter(Evaluation.url == entry.url).delete()
                 db.query(JudgeEvaluation).filter(JudgeEvaluation.url == entry.url).delete()
+
                 db.add(Evaluation(
                     url=entry.url,
                     precision_score=metrics["precision"],
                     recall_score = metrics["recall"],
                     f1_score = metrics["f1"]
                 ))
-                db.add(JudgeEvaluation(url=entry.url, model_name="llama3.2:3b", score=score, feedback=giudizio))
+                
+                db.add(JudgeEvaluation(
+                    url=entry.url, 
+                    model_name="llama3.2:3b", 
+                    score=score, 
+                    feedback=ia_res.get("feedback", "")
+                ))
 
         except Exception as e:
             print(f"Errore su {entry.url}: {str(e)}")
@@ -272,16 +285,24 @@ async def evaluate_judge(request: EvaluateRequest):
     """ Invia il testo a Ollama per una valutazione """    
     try:
         clean_parsed_text = remove_markdown(request.parsed_text)
-        giudizio = await evaluate_with_llm(clean_parsed_text, request.gold_text)
+        res_ia = await evaluate_with_llm(clean_parsed_text, request.gold_text)
         
+        ''' mega sbagliato
+        giudizio = await evaluate_with_llm(clean_parsed_text, request.gold_text)
         score = 3  # Default sicuro a metà classifica
         match = re.search(r'\b([1-5])\b', giudizio)
         if match:
             score = int(match.group(1))
-            
-        return JudgeResponse(model_name="tinyllama", judge_score=score, judge_feedback=giudizio)
+        '''
+        return JudgeResponse(model_name="llama3.2:3b", 
+                             judge_score=res_ia.get(), 
+                             judge_feedback=res_ia.get("feedback", "Nessun feedback disponibile")
+        )
     except Exception as e:
-        return JudgeResponse(model_name="error", judge_score=3, judge_feedback=str(e))
+        return JudgeResponse(model_name="error", 
+                             judge_score=1, 
+                             judge_feedback=str(e)
+        )
 
 @app.get("/db_stats")
 def get_db_stats(db: Session = Depends(get_db)):

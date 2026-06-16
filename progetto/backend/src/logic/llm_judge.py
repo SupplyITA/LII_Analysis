@@ -2,7 +2,7 @@ import httpx
 import json
 from typing import Dict, Any
 
-OLLAMA_URL = "http://ollama:11434/api/generate"
+OLLAMA_URL = "http://ollama:11434/api/chat"
 MODEL_NAME = "llama3.2:3b" 
 
 async def evaluate_with_llm(parsed_text: str, gold_text: str) -> Dict[str, Any]:
@@ -36,14 +36,15 @@ Sii conciso e diretto.
 
     async with httpx.AsyncClient() as client:
         try:
+            # timeout
             response = await client.post(OLLAMA_URL, json=payload, timeout=120.0)
             response.raise_for_status()
             
             raw_content = response.json()["message"]["content"]
             return json.loads(raw_content)
         
-        except (Exception, json.JSONDecodeError) as e:
-            # fallback: se llm sbaglia formato o c'è un errore
+        except Exception as e:
+            # fallback: se llm sbaglia formato o c'è un errore restituisce 1
             return {
                 "score": 1,
                 "feedback": f"Errore nel processamento del giudizio (Fallback): {str(e)}"
