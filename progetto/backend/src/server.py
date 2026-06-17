@@ -226,14 +226,7 @@ async def full_gs_eval(domain: str, db: Session = Depends(get_db)):
                 ia_res = await evaluate_with_llm(clean_parsed_text, entry.gold_text)
                 score = ia_res.get("score", 1) 
                 results_scores.append(score)
-
-                ''' parte sbagliatissima !!!
-                # judge evaluation - llm
-                giudizio = await evaluate_with_llm(clean_parsed_text, entry.gold_text)
-                score_match = re.search(r'\b([1-5])\b', giudizio)
-                score = int(score_match.group(1)) if score_match else 3
-                results_scores.append(score)
-                '''
+    
                 # salvataggio statistiche pre-calcolate
                 db.query(Evaluation).filter(Evaluation.url == entry.url).delete()
                 db.query(JudgeEvaluation).filter(JudgeEvaluation.url == entry.url).delete()
@@ -287,15 +280,8 @@ async def evaluate_judge(request: EvaluateRequest):
         clean_parsed_text = remove_markdown(request.parsed_text)
         res_ia = await evaluate_with_llm(clean_parsed_text, request.gold_text)
         
-        ''' mega sbagliato
-        giudizio = await evaluate_with_llm(clean_parsed_text, request.gold_text)
-        score = 3  # Default sicuro a metà classifica
-        match = re.search(r'\b([1-5])\b', giudizio)
-        if match:
-            score = int(match.group(1))
-        '''
         return JudgeResponse(model_name="llama3.2:3b", 
-                             judge_score=res_ia.get(), 
+                             judge_score=res_ia.get("score", 1), 
                              judge_feedback=res_ia.get("feedback", "Nessun feedback disponibile")
         )
     except Exception as e:
