@@ -1,5 +1,6 @@
 import httpx
 import json
+import re
 from typing import Dict, Any
 
 OLLAMA_URL = "http://ollama:11434/api/chat"
@@ -21,7 +22,7 @@ Rispondi SOLO con un JSON nel seguente formato:
 
 {{
  "score": <tra 1 e 5>,
- "feedback": <breve descrizione della qualità del testo>
+ "feedback": "<breve descrizione della qualità del testo>"
 }}
 
 Sii conciso e diretto.
@@ -36,15 +37,19 @@ Sii conciso e diretto.
 
     async with httpx.AsyncClient() as client:
         try:
-            # timeout
             response = await client.post(OLLAMA_URL, json=payload, timeout=120.0)
             response.raise_for_status()
             
             raw_content = response.json()["message"]["content"]
+            
+            # Estrae esclusivamente la parte compresa tra le parentesi graffe per ignorare il markdown
+            json_match = re.search(r'\{.*\}', raw_content, re.DOTALL)
+            if json_match:
+                raw_content = json_match.group(0)
+                
             return json.loads(raw_content)
         
         except Exception as e:
-            # fallback: se llm sbaglia formato o c'è un errore restituisce 1
             return {
                 "score": 1,
                 "feedback": f"Errore nel processamento del giudizio (Fallback): {str(e)}"

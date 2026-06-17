@@ -4,6 +4,8 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 import requests
+from urllib.parse import urlparse
+import re
 
 app = FastAPI()
 
@@ -79,7 +81,8 @@ def evaluate_parser(request: Request, url: str = Form(...), local: bool = Form(F
         pass
 
     try:
-        parse_resp = requests.post(f"{BACKEND_URL}/parse", json={"url": url, "local": local}, timeout=10)
+        # AUMENTATO IL TIMEOUT PER IL CRAWLER LIVE A 60s
+        parse_resp = requests.post(f"{BACKEND_URL}/parse", json={"url": url, "local": local}, timeout=60)
         if parse_resp.status_code != 200:
             error_detail = parse_resp.json().get("detail", "Errore durante il parsing dell'URL.")
             return templates.TemplateResponse(request=request, name="evaluation.html", context={"request": request, "error": error_detail, "gs_urls": all_urls})
@@ -158,29 +161,43 @@ def gs_builder_page(request: Request, domain: str = None):
 @app.post("/gs_builder/fetch_html")
 def fetch_html(url: str = Form(...)):
     try:
-        resp = requests.post(f"{BACKEND_URL}/parse", json={"url": url, "local": False}, timeout=10)
+        resp = requests.post(f"{BACKEND_URL}/parse", json={"url": url, "local": False}, timeout=60)
         if resp.status_code == 200:
             data = resp.json()
             return {"html_text": data.get("html_text", ""), "url": url}
         return {"error": resp.json().get("detail", "Impossibile scaricare l'HTML o dominio non supportato")}
-    except Exception:
-        return {"error": "Errore di connessione al Backend"}
+    except Exception as e:
+        return {"error": f"Errore di connessione al Backend: {str(e)}"}
 
 @app.post("/gs_builder/add")
 def add_gs(request: Request, url: str = Form(...), html_text: str = Form(...), gold_text: str = Form(...)):
     try:
-        res1 = requests.post(f"{BACKEND_URL}/add_web_resource", json={"url": url, "html_text": html_text}, timeout=5)
+        # RISOLUZIONE BUG PAYLOAD: Estrae dominio e titolo per soddisfare i requisiti del backend
+        domain = urlparse(url).netloc
+        title_match = re.search(r'<title>(.*?)</title>', html_text, re.IGNORECASE)
+        title = title_match.group(1) if title_match else "No Title Found"
+
+        payload_web_res = {
+            "url": url, 
+            "domain": domain, 
+            "title": title, 
+            "html_text": html_text
+        }
+
+        # TIMEOUT ALZATI A 15s E PAYLOAD COMPLETO INVIATO AL DB
+        res1 = requests.post(f"{BACKEND_URL}/add_web_resource", json=payload_web_res, timeout=15)
         if res1.status_code not in (200, 201) and "already exists" not in res1.text:
-             return templates.TemplateResponse(request=request, name="gs-builder.html", context={"request": request, "error": res1.json().get("detail", "Errore aggiunta web_resource")})
+             return templates.TemplateResponse(request=request, name="gs-builder.html", context={"request": request, "error": f"Errore aggiunta web_resource: {res1.text}"})
         
-        res2 = requests.post(f"{BACKEND_URL}/add_gold_standard", json={"url": url, "gold_text": gold_text}, timeout=5)
+        res2 = requests.post(f"{BACKEND_URL}/add_gold_standard", json={"url": url, "gold_text": gold_text}, timeout=15)
         if res2.status_code not in (200, 201):
-             return templates.TemplateResponse(request=request, name="gs-builder.html", context={"request": request, "error": res2.json().get("detail", "Errore aggiunta gold_standard")})
+             return templates.TemplateResponse(request=request, name="gs-builder.html", context={"request": request, "error": f"Errore aggiunta gold_standard: {res2.text}"})
              
-    except Exception:
-        return templates.TemplateResponse(request=request, name="gs-builder.html", context={"request": request, "error": "Backend non raggiungibile"})
+    except Exception as e:
+        return templates.TemplateResponse(request=request, name="gs-builder.html", context={"request": request, "error": f"Errore di connessione: {str(e)}"})
         
     return RedirectResponse(url="/gs_builder", status_code=303)
+
 
 class DeleteRequest(BaseModel):
     url: str
