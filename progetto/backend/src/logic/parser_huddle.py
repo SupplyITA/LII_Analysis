@@ -8,8 +8,6 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 def get_domain(url: str) -> str:
     parsed = urlparse(url)
     domain = parsed.netloc.lower()
-    if domain.startswith("www."):
-        domain = domain[4:]
     return domain
 
 def clean_huddle_markdown(md_text: str) -> str:

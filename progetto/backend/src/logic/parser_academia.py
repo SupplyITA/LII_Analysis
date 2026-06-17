@@ -9,8 +9,6 @@ def get_domain(url: str) -> str:
     """ Restituisce il dominio in minuscolo da un URL dato """     
     parsed = urlparse(url)
     domain = parsed.netloc.lower()
-    if domain.startswith("www."):
-        domain = domain[4:]
     return domain
 
 def clean_academia_markdown(md_text: str) -> str:
